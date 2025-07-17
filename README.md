@@ -30,47 +30,49 @@ pip install colorize
 ### Modern Enhanced API (Recommended)
 
 ```python
-from colorize import colored, C, txt, RED, GREEN, BLUE, BOLD, BG_WHITE, UNDERLINE
-
-# Factory functions with method chaining
-print(colored("Success").green().bold())
-print(txt("Warning").yellow())
+from colorize import colored, C, txt, RED, GREEN, BLUE, YELLOW, BOLD, BG_WHITE, UNDERLINE
 
 # Type-safe constants with operator chaining (RECOMMENDED)
+print(colored("Success") | GREEN | BOLD)
+print(txt("Warning") | YELLOW)
 print(colored("Error") | RED | BOLD | BG_WHITE)
 print(txt("Info") >> BLUE >> UNDERLINE)
 
-# Old way with string literals (error-prone)
-print(colored("Error") | "red" | "typo")  # "typo" causes runtime error
-
-# Global convenience object
-print(C.green("✓ Tests passing"))
-print(C.red("✗ Build failed"))
+# Global convenience object with constants
+print(C("✓ Tests passing") | GREEN)
+print(C("✗ Build failed") | RED)
 print(C("Processing...") | BLUE | BOLD)
+
+# Legacy method chaining (still works but uses internal string literals)
+print(colored("Success").green().bold())
+print(txt("Warning").yellow())
 ```
 
 ### Real-World Examples
 
 ```python
-from colorize import colored, C, txt, ColorString
+from colorize import (
+    colored, C, txt, ColorString, 
+    RED, GREEN, BLUE, YELLOW, BOLD, DIM, BG_WHITE, BLINK
+)
 
-# Log levels
-print(C("DEBUG", "dim") + " - Application started")
-print(colored("INFO").blue() + " - User logged in")
-print(txt("WARNING") | "yellow" | "bright" + " - Memory usage high")
-print(ColorString("ERROR").red().bold() + " - Database connection failed")
+# Log levels with type-safe constants
+print(C("DEBUG") | DIM + " - Application started")
+print(colored("INFO") | BLUE + " - User logged in")
+print(txt("WARNING") | YELLOW | BOLD + " - Memory usage high")
+print(ColorString("ERROR") | RED | BOLD + " - Database connection failed")
 
-# CLI status indicators
+# CLI status indicators (direct color methods still work)
 print(f"{C.green('✓')} File saved successfully")
 print(f"{C.yellow('⚠')} Configuration outdated")
 print(f"{C.red('✗')} Permission denied")
 
-# Complex chaining
+# Complex chaining with constants
 alert = (colored("SYSTEM ALERT")
-         .red()
-         .bold()
-         .bg_white()
-         | "blink")
+         | RED
+         | BOLD
+         | BG_WHITE
+         | BLINK)
 print(alert)
 ```
 
@@ -81,7 +83,7 @@ from colorize import colored
 
 # Highlight search terms
 text = "The quick brown fox jumps over the lazy dog"
-highlighted = colored(text).highlight(r"(quick|fox|lazy)", ["red", "blue", "green"])
+highlighted = colored(text).highlight(r"(quick)|(fox)|(lazy)", ["red", "blue", "green"])
 print(highlighted)
 
 # Syntax highlighting
@@ -113,13 +115,13 @@ error_msg = colored("CRITICAL") | RED | BOLD | BG_WHITE
 success_msg = colored("SUCCESS") | GREEN | BOLD
 warning_msg = colored("WARNING") | YELLOW
 
-# ❌ Error-prone string literals  
+# ❌ Error-prone string literals
 error_msg = colored("CRITICAL") | "red" | "typo"  # Runtime error!
 ```
 
 **Benefits:**
 - 🔍 **IDE Autocompletion**: Get suggestions for valid colors
-- 🛡️ **Type Checking**: Catch typos at development time  
+- 🛡️ **Type Checking**: Catch typos at development time
 - 📝 **Self-Documenting**: Clear, readable code
 - 🔄 **Refactoring Safe**: Rename constants across codebase
 - ⚡ **No Runtime Errors**: Invalid colors caught early
@@ -134,40 +136,40 @@ error_msg = colored("CRITICAL") | "red" | "typo"  # Runtime error!
 
 Choose the style that fits your needs:
 
-### 1. Factory Functions
+### 1. Type-Safe Constants (Recommended)
+```python
+from colorize import colored, txt, RED, BLUE, BOLD, UNDERLINE
+
+colored("hello") | RED | BOLD
+txt("world") | BLUE | UNDERLINE
+```
+
+### 2. Global Object with Constants
+```python
+from colorize import C, RED, BOLD
+
+C.red("hello")              # Direct color method
+C("hello") | RED | BOLD     # Factory with type-safe constants
+C("hello", "red")           # Direct colorization (legacy)
+```
+
+### 3. Enhanced ColorString with Constants
+```python
+from colorize import ColorString, RED, BOLD, BG_YELLOW
+
+ColorString("hello") | RED | BOLD | BG_YELLOW
+```
+
+### 4. Legacy Method Chaining (Still Supported)
 ```python
 from colorize import colored, txt
 
+# Method chaining (uses internal string literals)
 colored("hello").red().bold()
-txt("world") | "blue" | "underline"
-```
+txt("world").blue().underline()
 
-### 2. Global Object
-```python
-from colorize import C
-
-C.red("hello")              # Direct color application
-C("hello").red().bold()     # Factory with chaining
-C("hello", "red")           # Direct colorization
-```
-
-### 3. Enhanced ColorString
-```python
-from colorize import ColorString
-
-ColorString("hello").red() | "bold" | "bg_yellow"
-```
-
-### 4. Operator Chaining (Pathlib-inspired)
-```python
-# Using | operator (like Pathlib's /)
-colored("Error") | "red" | "bright" | "bg_white"
-
-# Using >> operator
-txt("Success") >> "green" >> "bold" >> "underline"
-
-# Mixing operators
-((colored("Mixed") | "red") >> "bright") | "bg_yellow"
+# Mixed with operators (not recommended - inconsistent)
+colored("Mixed").red() | "bright"
 ```
 
 ## 🛠️ Command Line Interface
