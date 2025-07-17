@@ -27,7 +27,7 @@ EXAMPLES = {
             'echo "hello world" | tinty "(ll).*(ld)" red,bg_blue blue,bg_red',
         ],
         "readme_description": "CLI pattern highlighting:",
-        "readme_subset": [1],  # Show only the second line in README
+        "readme_subset": [0, 2],  # Show only the second line in README
     },
     "complex_styling": {
         "imports": "from tinty import BG_WHITE, BLUE, BOLD, DIM, RED, YELLOW, colored",
@@ -39,7 +39,7 @@ EXAMPLES = {
             'print(str(colored("ERROR") | RED | BOLD) + " - Database connection failed")',
         ],
         "readme_description": "Complex styling made easy:",
-        "readme_subset": [0, 1, 4],  # Show alert, debug, and error
+        "readme_subset": [0, 1, 2, 3, 4],  # Show alert, debug, and error
     },
     "pattern_highlighting": {
         "imports": "from tinty import colored",

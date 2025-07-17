@@ -40,7 +40,8 @@ print(colored("Info") | BLUE)
 **CLI pattern highlighting:**
 
 ```bash
-
+echo "hello world" | tinty "l.*" yellow
+echo "hello world" | tinty "(ll).*(ld)" red,bg_blue blue,bg_red
 ```
 ![CLI Examples](docs/images/cli-examples.png)
 
@@ -49,6 +50,8 @@ print(colored("Info") | BLUE)
 ```python
 print(colored("SYSTEM ALERT") | RED | BOLD | BG_WHITE)
 print(str(colored("DEBUG") | DIM) + " - Application started")
+print(str(colored("INFO") | BLUE) + " - User logged in")
+print(str(colored("WARNING") | YELLOW | BOLD) + " - Memory usage high")
 print(str(colored("ERROR") | RED | BOLD) + " - Database connection failed")
 ```
 ![Complex Styling](docs/images/complex-styling.png)
