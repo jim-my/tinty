@@ -53,7 +53,7 @@ class TestCreateParser:
         args = parser.parse_args([])
 
         assert args.pattern == "(.*)"
-        assert args.colors == ["black:bg_yellow:swapcolor"]
+        assert args.colors == ["black,bg_yellow,swapcolor"]
 
 
 class TestListColors:
@@ -154,7 +154,7 @@ class TestMain:
                     mock_parser.return_value = mock_parser_instance
                     mock_parser_instance.parse_args.return_value = MagicMock(
                         pattern="(.*)",
-                        colors=["black:bg_yellow:swapcolor"],
+                        colors=["black,bg_yellow,swapcolor"],
                         list_colors=False,
                     )
 
