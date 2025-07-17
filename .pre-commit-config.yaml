@@ -25,13 +25,17 @@ repos:
       - id: ruff-format
         args: [--preview]  # Format code with preview features
 
-  # Type checking (temporarily disabled - enable after fixing type issues)
-  # - repo: https://github.com/pre-commit/mirrors-mypy
-  #   rev: v1.17.0  # Updated version
-  #   hooks:
-  #     - id: mypy
-  #       additional_dependencies: [types-setuptools]
-  #       args: [--ignore-missing-imports, --strict]
+  # Type checking
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy
+        entry: mypy
+        language: python
+        types: [python]
+        args: [src/]
+        pass_filenames: false
+        additional_dependencies: [mypy, types-setuptools]
 
   # Security scanning
   - repo: https://github.com/PyCQA/bandit
@@ -48,28 +52,6 @@ repos:
       - id: gitleaks
         name: "🔒 Detect hardcoded secrets"
 
-  # Documentation checks (temporarily disabled - enable after fixing docstring issues)
-  # - repo: https://github.com/pycqa/pydocstyle
-  #   rev: 6.3.0
-  #   hooks:
-  #     - id: pydocstyle
-  #       args: [--convention=google]  # Use Google docstring style
-  #       additional_dependencies: [toml]
-
-  # Test coverage (temporarily disabled - enable after fixing test issues)
-  # - repo: local
-  #   hooks:
-  #     - id: pytest-check
-  #       name: "🧪 Quick test check"
-  #       entry: pytest
-  #       language: python
-  #       types: [python]
-  #       pass_filenames: false
-  #       always_run: true
-  #       args: [--tb=short, -q, --disable-warnings]  # Quick run without coverage
-
-
-  # Note: Import sorting is handled by ruff-check above
 
 # Performance optimization
 default_language_version:
@@ -81,7 +63,8 @@ exclude: |
     migrations/.*|
     \.venv/.*|
     build/.*|
-    dist/.*
+    dist/.*|
+    src/tinty/_version\.py
   )$
 
 # Fail fast - stop on first failure
