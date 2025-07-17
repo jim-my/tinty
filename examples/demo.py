@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Demo script showing colorize library functionality.
+Demo script showing tinty library functionality.
 """
 
-from colorize import Colorize, ColorizedString, monkey_patch_string
+from tinty import Colorize, ColorizedString
 
 
 def demo_basic_colorization():
@@ -109,27 +109,24 @@ def demo_random_colors():
     print()
 
 
-def demo_monkey_patching():
-    """Demonstrate string monkey patching."""
-    print("=== String Monkey Patching ===")
+def demo_modern_api():
+    """Demonstrate modern production-safe API."""
+    print("=== Modern Production-Safe API ===")
 
-    # Apply monkey patch
-    original_str = monkey_patch_string()
+    from tinty import colored, txt, C, RED, BLUE, UNDERLINE, YELLOW
+    
+    # Type-safe constants (recommended)
+    print(colored("Red text") | RED)
+    print(txt("Blue background") | BLUE)  
+    print(colored("Underlined") | UNDERLINE)
+    
+    # Global convenience object
+    print(C.red("Also red text"))
+    print(C("Flexible") | BLUE | UNDERLINE)
 
-    try:
-        # Now all strings have color methods
-        print("Red text".red)
-        print("Blue background".bg_blue)
-        print("Underlined".underline)
-
-        # Highlight method also available
-        print("Hello World".highlight(r"l", ["yellow"]))
-
-    finally:
-        # Restore original string class
-        from colorize.string_extensions import restore_string
-
-        restore_string(original_str)
+    # Highlight method available on ColorString
+    result = colored("Hello World").highlight(r"l", [YELLOW])
+    print(result)
 
     print()
 
@@ -168,7 +165,7 @@ def demo_complex_example():
 
 def main():
     """Run all demos."""
-    print("🎨 Colorize Library Demo")
+    print("🎨 Tinty Library Demo")
     print("=" * 50)
 
     demo_basic_colorization()
@@ -177,7 +174,7 @@ def main():
     demo_position_highlighting()
     demo_color_removal()
     demo_random_colors()
-    demo_monkey_patching()
+    demo_modern_api()
     demo_complex_example()
 
     print("Demo complete! 🎉")

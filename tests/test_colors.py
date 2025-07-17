@@ -4,7 +4,7 @@ Tests for type-safe color constants.
 
 import pytest
 
-from colorize import (
+from tinty import (
     BG_BLUE,
     BG_RED,
     BG_WHITE,
@@ -19,7 +19,7 @@ from colorize import (
     colored,
     txt,
 )
-from colorize.colors import ALL_COLORS, BACKGROUND_COLORS, FOREGROUND_COLORS, STYLES
+from tinty.colors import ALL_COLORS, BACKGROUND_COLORS, FOREGROUND_COLORS, STYLES
 
 
 class TestColorConstants:
@@ -112,7 +112,7 @@ class TestColorConstants:
 
     def test_constants_with_legacy_api(self):
         """Test that constants work with legacy API too."""
-        from colorize import Colorize, ColorizedString
+        from tinty import Colorize, ColorizedString
         
         colorizer = Colorize()
         result = colorizer.colorize("hello", RED)

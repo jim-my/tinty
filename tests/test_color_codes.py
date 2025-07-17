@@ -2,7 +2,7 @@
 Tests for color codes module.
 """
 
-from colorize.color_codes import ColorCode, ColorManager, color_manager
+from tinty.color_codes import ColorCode, ColorManager, color_manager
 
 
 class TestColorCode:

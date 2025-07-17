@@ -12,7 +12,7 @@ import sys
 # Add src to path for running from examples directory
 sys.path.insert(0, str(pathlib.Path(__file__).parent / ".." / "src"))
 
-from colorize import (
+from tinty import (
     BG_BLUE,
     BG_WHITE,
     BG_YELLOW,

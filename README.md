@@ -1,11 +1,11 @@
-# Colorize
+# Tinty
 
 A Python library for terminal text colorization and highlighting, inspired by the Ruby colorize gem. Now with a modern, production-safe API featuring Pathlib-inspired operator chaining!
 
 ![CI](https://github.com/jimmyyan/colorize/workflows/CI/badge.svg)
 [![codecov](https://codecov.io/gh/jimmyyan/colorize/branch/main/graph/badge.svg)](https://codecov.io/gh/jimmyyan/colorize)
-[![PyPI version](https://badge.fury.io/py/colorize.svg)](https://badge.fury.io/py/colorize)
-[![Python versions](https://img.shields.io/pypi/pyversions/colorize.svg)](https://pypi.org/project/colorize)
+[![PyPI version](https://badge.fury.io/py/tinty.svg)](https://badge.fury.io/py/tinty)
+[![Python versions](https://img.shields.io/pypi/pyversions/tinty.svg)](https://pypi.org/project/tinty)
 
 ## ✨ Features
 
@@ -22,7 +22,7 @@ A Python library for terminal text colorization and highlighting, inspired by th
 ## 🚀 Installation
 
 ```bash
-pip install colorize
+pip install tinty
 ```
 
 ## 🎨 Quick Start
@@ -30,7 +30,7 @@ pip install colorize
 ### Modern Enhanced API (Recommended)
 
 ```python
-from colorize import colored, C, txt, RED, GREEN, BLUE, YELLOW, BOLD, BG_WHITE, UNDERLINE
+from tinty import colored, C, txt, RED, GREEN, BLUE, YELLOW, BOLD, BG_WHITE, UNDERLINE
 
 # Type-safe constants with operator chaining (RECOMMENDED)
 print(colored("Success") | GREEN | BOLD)
@@ -51,7 +51,7 @@ print(txt("Warning").yellow())
 ### Real-World Examples
 
 ```python
-from colorize import (
+from tinty import (
     colored, C, txt, ColorString, 
     RED, GREEN, BLUE, YELLOW, BOLD, DIM, BG_WHITE, BLINK
 )
@@ -79,7 +79,7 @@ print(alert)
 ### Pattern Highlighting
 
 ```python
-from colorize import colored
+from tinty import colored
 
 # Highlight search terms
 text = "The quick brown fox jumps over the lazy dog"
@@ -108,7 +108,7 @@ print(result)
 Use constants instead of error-prone string literals:
 
 ```python
-from colorize import colored, RED, GREEN, BLUE, YELLOW, BOLD, BG_WHITE
+from tinty import colored, RED, GREEN, BLUE, YELLOW, BOLD, BG_WHITE
 
 # ✅ Type-safe with IDE autocompletion and error checking
 error_msg = colored("CRITICAL") | RED | BOLD | BG_WHITE
@@ -138,7 +138,7 @@ Choose the style that fits your needs:
 
 ### 1. Type-Safe Constants (Recommended)
 ```python
-from colorize import colored, txt, RED, BLUE, BOLD, UNDERLINE
+from tinty import colored, txt, RED, BLUE, BOLD, UNDERLINE
 
 colored("hello") | RED | BOLD
 txt("world") | BLUE | UNDERLINE
@@ -146,7 +146,7 @@ txt("world") | BLUE | UNDERLINE
 
 ### 2. Global Object with Constants
 ```python
-from colorize import C, RED, BOLD
+from tinty import C, RED, BOLD
 
 C.red("hello")              # Direct color method
 C("hello") | RED | BOLD     # Factory with type-safe constants
@@ -155,14 +155,14 @@ C("hello", "red")           # Direct colorization (legacy)
 
 ### 3. Enhanced ColorString with Constants
 ```python
-from colorize import ColorString, RED, BOLD, BG_YELLOW
+from tinty import ColorString, RED, BOLD, BG_YELLOW
 
 ColorString("hello") | RED | BOLD | BG_YELLOW
 ```
 
 ### 4. Legacy Method Chaining (Still Supported)
 ```python
-from colorize import colored, txt
+from tinty import colored, txt
 
 # Method chaining (uses internal string literals)
 colored("hello").red().bold()
@@ -176,16 +176,16 @@ colored("Mixed").red() | "bright"
 
 ```bash
 # Basic usage
-echo "hello world" | colorize 'l' red
+echo "hello world" | tinty 'l' red
 
 # Pattern highlighting with groups
-echo "hello world" | colorize '(h.*o).*(w.*d)' red blue
+echo "hello world" | tinty '(h.*o).*(w.*d)' red blue
 
 # List available colors
-colorize --list-colors
+tinty --list-colors
 
 # Case sensitive matching
-echo "Hello World" | colorize --case-sensitive 'Hello' green
+echo "Hello World" | tinty --case-sensitive 'Hello' green
 ```
 
 ## 🔄 Legacy API (Still Supported)
@@ -193,7 +193,7 @@ echo "Hello World" | colorize --case-sensitive 'Hello' green
 The original API remains fully supported for backward compatibility:
 
 ```python
-from colorize import Colorize, ColorizedString
+from tinty import Colorize, ColorizedString
 
 # Original Colorize class
 colorizer = Colorize()

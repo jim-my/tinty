@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Colorize Quickstart Example
+Tinty Quickstart Example
 
 This example demonstrates the modern, production-safe colorization API.
 All monkey patching has been removed for safety and reliability.
@@ -13,13 +13,13 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).parent / ".." / "src"))
 
 # Import the enhanced, production-safe API
-from colorize import C, ColorString, colored, txt
+from tinty import C, ColorString, colored, txt
 
 
 def main():
     """Demonstrate the modern colorize API."""
 
-    print("🎨 Colorize - Modern Production-Safe API")
+    print("🎨 Tinty - Modern Production-Safe API")
     print("=" * 45)
     print()
 

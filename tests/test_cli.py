@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from colorize.cli import create_parser, list_colors, main, process_line
+from tinty.cli import create_parser, list_colors, main, process_line
 
 
 class TestCreateParser:
@@ -95,7 +95,7 @@ class TestProcessLine:
         assert "\033[0m" in result  # Reset
 
         # Check that original text is preserved when colors are removed
-        from colorize import ColorizedString
+        from tinty import ColorizedString
 
         cs = ColorizedString(result)
         assert cs.remove_color() == "hello world"
@@ -149,7 +149,7 @@ class TestMain:
             mock_stdin.isatty.return_value = True
 
             with patch("sys.argv", ["colorize"]):
-                with patch("colorize.cli.create_parser") as mock_parser:
+                with patch("tinty.cli.create_parser") as mock_parser:
                     mock_parser_instance = MagicMock()
                     mock_parser.return_value = mock_parser_instance
                     mock_parser_instance.parse_args.return_value = MagicMock(
@@ -164,7 +164,7 @@ class TestMain:
     def test_main_list_colors(self):
         """Test main with list colors option."""
         with patch("sys.argv", ["colorize", "--list-colors"]):
-            with patch("colorize.cli.list_colors") as mock_list_colors:
+            with patch("tinty.cli.list_colors") as mock_list_colors:
                 main()
                 mock_list_colors.assert_called_once()
 
@@ -193,7 +193,7 @@ class TestMain:
                     assert "\033[0m" in output  # Reset
 
                     # Check that original text is preserved when colors are removed
-                    from colorize import ColorizedString
+                    from tinty import ColorizedString
 
                     cs = ColorizedString(output)
                     cleaned_output = cs.remove_color()
@@ -273,7 +273,7 @@ class TestCLIIntegration:
                     assert "\033[0m" in output
 
                     # Check that original text is preserved when colors are removed
-                    from colorize import ColorizedString
+                    from tinty import ColorizedString
 
                     cs = ColorizedString(output)
                     assert "hello world" in cs.remove_color()
@@ -294,7 +294,7 @@ class TestCLIIntegration:
                     assert "\033[0m" in output
 
                     # Check that original text is preserved when colors are removed
-                    from colorize import ColorizedString
+                    from tinty import ColorizedString
 
                     cs = ColorizedString(output)
                     assert "hello world" in cs.remove_color()
@@ -315,7 +315,7 @@ class TestCLIIntegration:
                     assert "\033[0m" in output
 
                     # Check that original text is preserved when colors are removed
-                    from colorize import ColorizedString
+                    from tinty import ColorizedString
 
                     cs = ColorizedString(output)
                     assert "hello world" in cs.remove_color()

@@ -12,7 +12,7 @@ import sys
 # Add src to path for running from examples directory
 sys.path.insert(0, str(pathlib.Path(__file__).parent / ".." / "src"))
 
-from colorize import C, ColorString, colored, txt
+from tinty import C, ColorString, colored, txt
 
 
 def demo_basic_usage():
@@ -179,7 +179,7 @@ def demo_comparison_with_legacy():
     print("=== Comparison: New vs Legacy API ===")
 
     # Legacy way (still works)
-    from colorize import Colorize
+    from tinty import Colorize
 
     colorizer = Colorize()
     legacy_result = colorizer.colorize("Legacy API", "red")
