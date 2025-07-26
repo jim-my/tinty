@@ -1,10 +1,6 @@
-"""
-Command-line interface for colorize.
-"""
+"""Command-line interface for colorize."""
 
 import argparse
-import builtins
-import contextlib
 import re
 import sys
 
@@ -59,45 +55,12 @@ Examples:
 def list_colors():
     """List all available colors."""
     colorizer = Colorize()
-    color_names = colorizer.get_color_names()
 
     print("Available colors:")
     print()
-    # Group colors by type
-    fg_colors = [name for name in color_names if name.startswith("fg_")]
-    bg_colors = [name for name in color_names if name.startswith("bg_")]
-    styles = [name for name in color_names if not name.startswith(("fg_", "bg_"))]
-
-    print("Foreground colors:")
-    for color in sorted(fg_colors):
-        # Show color name with actual color
-        with contextlib.suppress(Exception):
-            colored_text = ColorizedString(color).colorize(color)
-            print(f"  {colored_text}")
-
-    print("\nBackground colors:")
-    for color in sorted(bg_colors):
-        with contextlib.suppress(Exception):
-            colored_text = ColorizedString(color).colorize(color)
-            print(f"  {colored_text}")
-
-    print("\nStyles:")
-    for style in sorted(styles):
-        with contextlib.suppress(builtins.BaseException):
-            colored_text = ColorizedString(style).colorize(style)
-            print(f"  {colored_text}")
-
-    aliases = [
-        name
-        for name in color_names
-        if not name.startswith(("fg_", "bg_")) and name not in styles
-    ]
-    if aliases:
-        print("\nColor aliases:")
-        for alias in sorted(aliases):
-            with contextlib.suppress(builtins.BaseException):
-                colored_text = ColorizedString(alias).colorize(alias)
-                print(f"  {colored_text}")
+    color_map = colorizer._color_manager._color_map
+    for name, code in sorted(color_map.items()):
+        print(f"  {name}: {code.value}")
 
 
 def process_line(

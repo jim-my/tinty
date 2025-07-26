@@ -1,6 +1,6 @@
 # Tinty
 
-A Python library for terminal text colorization and highlighting, inspired by the Ruby colorize gem. Now with a modern, production-safe API featuring Pathlib-inspired operator chaining!
+Tinty is a tiny Python library for terminal text colorization and highlighting, inspired by the Ruby colorize gem. Now with a modern, production-safe API featuring Pathlib-inspired operator chaining!
 
 ![CI](https://github.com/jimmyyan/colorize/workflows/CI/badge.svg)
 [![codecov](https://codecov.io/gh/jimmyyan/colorize/branch/main/graph/badge.svg)](https://codecov.io/gh/jimmyyan/colorize)

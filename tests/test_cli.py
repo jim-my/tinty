@@ -71,13 +71,10 @@ class TestListColors:
 
         # Should contain expected sections
         assert "Available colors:" in output
-        assert "Foreground colors:" in output
-        assert "Background colors:" in output
-        assert "Styles:" in output
 
-        # Should contain some specific colors
-        assert "fg_red" in output
-        assert "bg_blue" in output
+        # Should contain some specific colors with their values
+        assert "fg_red: 31" in output
+        assert "bg_blue: 44" in output
 
 
 class TestProcessLine:
