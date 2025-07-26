@@ -12,12 +12,13 @@ def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Colorize text from stdin using ANSI color codes",
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        usage="echo 'text' | tinty [PATTERN] [COLORS...]\n       tinty --list-colors",
         epilog="""
 Examples:
   echo "hello world" | tinty 'l.*' yellow
   echo "hello world" | tinty '(ll).*(ld)' red,bg_blue blue,bg_red
   echo "hello world" | tinty '(l).*(ld)' red bg_red
-  echo "hello world" | tinty --list-colors
+  tinty --list-colors
         """,
     )
 
@@ -25,14 +26,16 @@ Examples:
         "pattern",
         nargs="?",
         default="(.*)",
-        help="Regular expression pattern to match (default: match all)",
+        metavar="PATTERN",
+        help="Regular expression pattern to match text (default: match all)",
     )
 
     parser.add_argument(
         "colors",
         nargs="*",
         default=["black,bg_yellow,swapcolor"],
-        help="Colors to apply to matched groups (default: black,bg_yellow,swapcolor)",
+        metavar="COLORS",
+        help="Color names to apply to matched groups (default: black,bg_yellow,swapcolor)",
     )
 
     parser.add_argument(
