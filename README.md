@@ -2,8 +2,8 @@
 
 Tinty is a tiny Python library for terminal text colorization and highlighting, inspired by the Ruby colorize gem. Now with a modern, production-safe API featuring Pathlib-inspired operator chaining!
 
-![CI](https://github.com/jimmyyan/colorize/workflows/CI/badge.svg)
-[![codecov](https://codecov.io/gh/jimmyyan/colorize/branch/main/graph/badge.svg)](https://codecov.io/gh/jimmyyan/colorize)
+![CI](https://github.com/jim-my/colorize/workflows/CI/badge.svg)
+[![codecov](https://codecov.io/gh/jim-my/colorize/branch/main/graph/badge.svg)](https://codecov.io/gh/jim-my/colorize)
 [![PyPI version](https://badge.fury.io/py/tinty.svg)](https://badge.fury.io/py/tinty)
 [![Python versions](https://img.shields.io/pypi/pyversions/tinty.svg)](https://pypi.org/project/tinty)
 
@@ -35,7 +35,7 @@ print(colored("Warning") | YELLOW)
 print(colored("Error") | RED | BOLD)
 print(colored("Info") | BLUE)
 ```
-![Basic Colors Example](docs/images/basic-colors.png)
+![Basic Colors Example](https://raw.githubusercontent.com/jim-my/tinty/main/docs/images/basic-colors.png)
 
 **CLI pattern highlighting:**
 
@@ -43,7 +43,7 @@ print(colored("Info") | BLUE)
 echo "hello world" | tinty "l.*" yellow
 echo "hello world" | tinty "(ll).*(ld)" red,bg_blue blue,bg_red
 ```
-![CLI Examples](docs/images/cli-examples.png)
+![CLI Examples](https://raw.githubusercontent.com/jim-my/tinty/main/docs/images/cli-examples.png)
 
 **Complex styling made easy:**
 
@@ -54,7 +54,7 @@ print(str(colored("INFO") | BLUE) + " - User logged in")
 print(str(colored("WARNING") | YELLOW | BOLD) + " - Memory usage high")
 print(str(colored("ERROR") | RED | BOLD) + " - Database connection failed")
 ```
-![Complex Styling](docs/images/complex-styling.png)
+![Complex Styling](https://raw.githubusercontent.com/jim-my/tinty/main/docs/images/complex-styling.png)
 
 **Regex pattern highlighting:**
 
@@ -63,7 +63,7 @@ text = "The quick brown fox jumps over the lazy dog"
 highlighted = colored(text).highlight(r"(quick)|(fox)|(lazy)", ["red", "blue", "green"])
 print(highlighted)
 ```
-![Pattern Highlighting](docs/images/pattern-highlighting.png)
+![Pattern Highlighting](https://raw.githubusercontent.com/jim-my/tinty/main/docs/images/pattern-highlighting.png)
 
 ## 🎨 Quick Start
 

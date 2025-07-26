@@ -6,10 +6,6 @@ default:
     @just --list
 
 # Development setup
-setup:
-    pip install -e ".[dev]"
-    pre-commit install
-
 # Development setup with Poetry
 setup-poetry:
     poetry install --with dev
@@ -17,34 +13,34 @@ setup-poetry:
 
 # Run tests
 test:
-    pytest
+    poetry run pytest
 
 # Run tests with coverage
 test-cov:
-    pytest --cov=tinty --cov-report=html --cov-report=term
+    poetry run pytest --cov=tinty --cov-report=html --cov-report=term
 
 # Run type checking
 typecheck:
-    mypy src/
+    poetry run mypy src/
 
 # Run linting and formatting
 lint:
-    ruff check --preview .
+    poetry run ruff check --preview .
 
 # Auto-fix linting issues
 lint-fix:
-    ruff check --preview --fix .
+    poetry run ruff check --preview --fix .
 
 # Format code
 format:
-    ruff format --preview .
+    poetry run ruff format --preview .
 
 # Run all quality checks
 check: lint typecheck test
 
 # Run pre-commit hooks on all files
 pre-commit:
-    pre-commit run --all-files
+    poetry run pre-commit run --all-files
 
 # Clean build artifacts
 clean:
@@ -52,59 +48,49 @@ clean:
     find . -type d -name __pycache__ -exec rm -rf {} +
     find . -type f -name "*.pyc" -delete
 
-# Build package
-build: clean
-    python -m build
-
 # Build package with Poetry
 build-poetry: clean
     poetry build
 
 # Build and check package
-build-check: build
+build-check: build-poetry
     twine check dist/*
 
-# Build package with Poetry (check via regular build-check if needed)
-build-check-poetry: build-poetry
-    @echo "✅ Poetry build complete. Use 'just build-check' for validation if needed."
 
-# Install package locally in development mode
-install-dev:
-    pip install -e .
 
 # Run example scripts
 example script="quickstart":
-    python examples/{{script}}.py
+    poetry run python examples/{{script}}.py
 
 # Run CLI help
 cli-help:
-    tinty --help
+    poetry run tinty --help
 
 # Test CLI functionality
 cli-test:
-    echo "hello world" | tinty 'l' red
+    echo "hello world" | poetry run tinty 'l' red
 
 # Create a new release (requires version bump)
-release: check build-check
+release: check build-poetry
     @echo "Ready to release! Run: just publish-test or just publish"
 
 # Publish to test PyPI
-publish-test: build
-    twine upload --repository testpypi dist/*
+publish-test: build-poetry
+    poetry publish --repository testpypi
 
 # Publish to PyPI (PRODUCTION)
-publish: build
-    twine upload dist/*
+publish: build-poetry
+    poetry publish
 
 # Show package info
 info:
     @echo "Package: tinty"
-    @echo "Version: $(python -c 'import tinty; print(tinty.__version__)' 2>/dev/null || echo 'not installed')"
-    @echo "Location: $(python -c 'import tinty; print(tinty.__file__)' 2>/dev/null || echo 'not found')"
+    @echo "Version: $(poetry run python -c 'import tinty; print(tinty.__version__)' 2>/dev/null || echo 'not installed')"
+    @echo "Location: $(poetry run python -c 'import tinty; print(tinty.__file__)' 2>/dev/null || echo 'not found')"
 
 # Show available colors demo
 demo:
-    python -c "from tinty import C, RED, GREEN, BLUE, BOLD; print(C('✅ Tinty works!') | GREEN | BOLD)"
+    poetry run python -c "from tinty import C, RED, GREEN, BLUE, BOLD; print(C('✅ Tinty works!') | GREEN | BOLD)"
 
 
 # Generate screenshots for README (syncs examples, creates scripts, captures images)
@@ -112,16 +98,16 @@ screenshots:
     @echo "📸 Generating terminal screenshots for README..."
     @echo "🔄 Syncing examples between README and scripts..."
     @mkdir -p docs/images scripts
-    python scripts/sync_examples.py
+    poetry run python scripts/sync_examples.py
     chmod +x scripts/cli_examples.sh
     @echo "📸 Capturing screenshots with termshot..."
     @echo "Capturing basic colors example..."
-    -termshot --filename docs/images/basic-colors.png --columns 80 python scripts/basic_colors.py
+    -termshot --filename docs/images/basic-colors.png --columns 80 poetry run python scripts/basic_colors.py
     @echo "Capturing CLI pattern highlighting examples..."
-    -termshot --filename docs/images/cli-examples.png --columns 80 scripts/cli_examples.sh
+    -termshot --filename docs/images/cli-examples.png --columns 80 poetry run scripts/cli_examples.sh
     @echo "Capturing complex styling example..."
-    -termshot --filename docs/images/complex-styling.png --columns 80 python scripts/complex_styling.py
+    -termshot --filename docs/images/complex-styling.png --columns 80 poetry run python scripts/complex_styling.py
     @echo "Capturing pattern highlighting example..."
-    -termshot --filename docs/images/pattern-highlighting.png --columns 80 python scripts/pattern_highlighting.py
+    -termshot --filename docs/images/pattern-highlighting.png --columns 80 poetry run python scripts/pattern_highlighting.py
     @echo "✅ Screenshots generation complete (run in real terminal if termshot failed)"
     @echo "✅ README and scripts are synchronized"
