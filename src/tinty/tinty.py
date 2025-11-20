@@ -8,10 +8,6 @@ from typing import Optional, Union
 
 from .color_codes import ColorCode, ColorManager, color_manager
 
-# Priority calculation constants
-PIPELINE_STAGE_MULTIPLIER = 1_000_000
-NESTING_DEPTH_MULTIPLIER = 1_000
-
 # ANSI SGR code constants for extended colors
 ANSI_FG_256_CODE = 38
 ANSI_BG_256_CODE = 48
@@ -25,19 +21,20 @@ ANSI_TRUE_COLOR_LEN = 5  # 38;2;R;G;B
 class ColorRange:
     """Represents a range of text with a specific color applied.
 
-    Priority is calculated as:
-    priority = (pipeline_stage * 1M) + (nesting_depth * 1K) + application_order
+    Priority is a tuple (pipeline_stage, nesting_depth, application_order).
+    Python's lexicographic tuple comparison ensures:
+    - Later pipeline stages override earlier ones (first element)
+    - More nested regex groups override less nested ones (second element)
+    - Later applications override earlier ones at same depth (third element)
 
-    This ensures:
-    - Later pipeline stages override earlier ones
-    - More nested regex groups override less nested ones
-    - Later applications override earlier ones at same depth
+    Using tuples prevents overflow issues where application_order could
+    spill into nesting_depth space with integer-based priority calculation.
     """
 
     start: int  # Position in original text (inclusive)
     end: int  # Position in original text (exclusive)
     color: str  # Color name (e.g., 'red', 'bg_blue', 'bold')
-    priority: int = 0  # Higher priority wins within same channel
+    priority: tuple[int, int, int] = (0, 0, 0)  # (stage, depth, order)
     pipeline_stage: int = 0  # Which pipeline stage this was applied in
 
 
@@ -204,7 +201,7 @@ class ColorizedString(str):
                         start=start_pos,
                         end=pos,
                         color=prev_color,
-                        priority=0,
+                        priority=(0, 0, 0),
                         pipeline_stage=0,
                     )
                 )
@@ -260,7 +257,11 @@ class ColorizedString(str):
                                     start=start_pos,
                                     end=pos,
                                     color=color_name,
-                                    priority=0,  # Parsed from input, pipeline_stage=0
+                                    priority=(
+                                        0,
+                                        0,
+                                        0,
+                                    ),  # Parsed from input, pipeline_stage=0
                                     pipeline_stage=0,
                                 )
                             )
@@ -306,7 +307,7 @@ class ColorizedString(str):
                         start=start_pos,
                         end=pos,
                         color=color_name,
-                        priority=0,
+                        priority=(0, 0, 0),
                         pipeline_stage=0,
                     )
                 )
@@ -468,10 +469,11 @@ class ColorizedString(str):
         color_name = self._normalize_color_name(color_name)
 
         # Create new ColorRange for entire text
+        # Priority tuple: (pipeline_stage, nesting_depth, application_order)
         priority = (
-            self._pipeline_stage * PIPELINE_STAGE_MULTIPLIER
-            + NESTING_DEPTH_MULTIPLIER  # depth=1 for whole-string colorization
-            + self._next_priority
+            self._pipeline_stage,
+            1,  # depth=1 for whole-string colorization
+            self._next_priority,
         )
 
         new_range = ColorRange(
@@ -626,10 +628,11 @@ class ColorizedString(str):
                 # For group 0 (entire match with no groups), use depth 1
                 nesting_depth = 1 if grp == 0 else nesting_depths.get(grp, 1)
 
+                # Priority tuple: (pipeline_stage, nesting_depth, application_order)
                 priority = (
-                    self._pipeline_stage * PIPELINE_STAGE_MULTIPLIER
-                    + nesting_depth * NESTING_DEPTH_MULTIPLIER
-                    + self._next_priority
+                    self._pipeline_stage,
+                    nesting_depth,
+                    self._next_priority,
                 )
 
                 # Create range
@@ -676,10 +679,11 @@ class ColorizedString(str):
         for pos in sorted(set(positions)):
             if 0 <= pos < len(self._original_text):
                 # Calculate priority
+                # Priority tuple: (pipeline_stage, nesting_depth, application_order)
                 priority = (
-                    self._pipeline_stage * PIPELINE_STAGE_MULTIPLIER
-                    + 2 * NESTING_DEPTH_MULTIPLIER  # depth=2 for individual chars
-                    + self._next_priority
+                    self._pipeline_stage,
+                    2,  # depth=2 for individual chars
+                    self._next_priority,
                 )
 
                 # Create range for single character
