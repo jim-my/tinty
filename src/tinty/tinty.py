@@ -121,15 +121,21 @@ class ColorizedString(str):
         super().__init__()
         self._colorizer = Colorize()
         self._next_priority = 0
-        self._pipeline_stage = pipeline_stage
 
         # If original_text provided, use it; otherwise parse from value
         if original_text is not None:
             self._original_text = original_text
             self._color_ranges = color_ranges or []
+            self._pipeline_stage = pipeline_stage
         else:
             # Parse ANSI codes from value to extract original text and ranges
             self._original_text, self._color_ranges = self._parse_ansi(value)
+            # If we parsed any ranges from ANSI codes, we're in a pipeline
+            # Start at stage 1 so new highlights have higher priority
+            if pipeline_stage == 0 and self._color_ranges:
+                self._pipeline_stage = 1
+            else:
+                self._pipeline_stage = pipeline_stage
 
         # Legacy support for old _colors_at API (will be removed)
         self._colors_at: dict[int, list[str]] = {}
@@ -140,15 +146,93 @@ class ColorizedString(str):
         Returns:
             (original_text, color_ranges) where original_text has ANSI codes removed
         """
-        # For now, just strip ANSI codes and return empty ranges
-        # Input from previous pipeline stage has lower priority (stage 0)
-        original = self._colorizer.remove_color(text)
+        # Pattern to match ANSI escape sequences
+        ansi_pattern = re.compile(r"\x1b\[([0-9;]+)m")
 
-        # TODO: Parse ANSI codes to reconstruct color_ranges
-        # This is complex and can be added later for full pipeline support
+        # Build reverse mapping: ANSI code -> color name
+        code_to_color = {}
+        for color_name, code_obj in self._colorizer._color_manager._color_map.items():
+            code_to_color[code_obj.value] = color_name
+
+        original_text = []
         ranges: list[ColorRange] = []
+        active_colors: dict[
+            str, tuple[str, int]
+        ] = {}  # channel -> (color_name, start_pos)
+        pos = 0
 
-        return original, ranges
+        # Split text into segments (text and ANSI codes)
+        last_end = 0
+        for match in ansi_pattern.finditer(text):
+            # Add text before this ANSI code
+            segment = text[last_end : match.start()]
+            if segment:
+                original_text.append(segment)
+                pos += len(segment)
+
+            # Parse ANSI code
+            code_str = match.group(1)
+            codes = [int(c) for c in code_str.split(";") if c]
+
+            for code in codes:
+                if code == 0:
+                    # Reset - close all active colors
+                    for color_name, start_pos in active_colors.values():
+                        if start_pos < pos:
+                            ranges.append(
+                                ColorRange(
+                                    start=start_pos,
+                                    end=pos,
+                                    color=color_name,
+                                    priority=0,  # Parsed from input, pipeline_stage=0
+                                    pipeline_stage=0,
+                                )
+                            )
+                    active_colors = {}
+                elif code in code_to_color:
+                    # Start a new color
+                    color_name = code_to_color[code]
+                    channel = self._get_color_channel(color_name)
+
+                    # Close previous color in this channel if any
+                    if channel in active_colors:
+                        prev_color, start_pos = active_colors[channel]
+                        if start_pos < pos:
+                            ranges.append(
+                                ColorRange(
+                                    start=start_pos,
+                                    end=pos,
+                                    color=prev_color,
+                                    priority=0,
+                                    pipeline_stage=0,
+                                )
+                            )
+
+                    # Start new color in this channel
+                    active_colors[channel] = (color_name, pos)
+
+            last_end = match.end()
+
+        # Add remaining text after last ANSI code
+        if last_end < len(text):
+            segment = text[last_end:]
+            original_text.append(segment)
+            pos += len(segment)
+
+        # Close any remaining active colors
+        for color_name, start_pos in active_colors.values():
+            if start_pos < pos:
+                ranges.append(
+                    ColorRange(
+                        start=start_pos,
+                        end=pos,
+                        color=color_name,
+                        priority=0,
+                        pipeline_stage=0,
+                    )
+                )
+
+        return "".join(original_text), ranges
 
     def _normalize_color_name(self, color_name: str) -> str:  # noqa: PLR6301
         """Normalize color names to standard format.
