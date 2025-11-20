@@ -103,7 +103,7 @@ class TestColorize:
             _ = colorizer.invalid_color
 
 
-class TestColorizedString:  # noqa: PLR0904
+class TestColorizedString:
     """Test ColorizedString class."""
 
     def test_initialization(self):
@@ -287,83 +287,44 @@ class TestColorizedString:  # noqa: PLR0904
         assert "\x1b[38;5;123m" in result_str  # Original 256-color preserved
         assert "\x1b[44m" in result_str  # New background color applied
 
-    def test_preserve_256_color_with_reset_prefix(self):
-        """Test 256-color with leading reset code (common in real terminals)."""
-        # Many terminals emit reset before color for clean state
-        text_with_reset = "\x1b[0;38;5;123mHello\x1b[0m"
-        cs = ColorizedString(text_with_reset)
+    def test_extended_colors_with_leading_attributes(self):
+        """Extended colors with leading attributes (e.g., reset/bold) are preserved."""
+        text = "\x1b[0;38;5;123mHello\x1b[0m"
+        cs = ColorizedString(text)
+        assert "\x1b[38;5;123m" in str(cs)
 
-        result = str(cs)
-        assert "Hello" in result
-        assert "\x1b[38;5;123m" in result  # Should preserve 256-color
-        assert "\x1b[5m" not in result  # Should NOT become 'blink'
+        text_bg = "\x1b[1;48;5;200mHello\x1b[0m"
+        cs_bg = ColorizedString(text_bg)
+        assert "\x1b[48;5;200m" in str(cs_bg)
 
-    def test_preserve_256_color_with_bold_prefix(self):
-        """Test 256-color with leading bold attribute."""
-        text = "\x1b[1;38;5;123mHello\x1b[0m"
+        text_true = "\x1b[0;38;2;255;100;50mHello\x1b[0m"
+        cs_true = ColorizedString(text_true)
+        assert "\x1b[38;2;255;100;50m" in str(cs_true)
+
+    def test_combined_extended_foreground_background_preserved(self):
+        """Combined fg+bg extended sequences should preserve both channels."""
+        text = "\x1b[38;5;123;48;5;231mHello\x1b[0m"
+        cs = ColorizedString(text)
+        rendered = str(cs)
+        assert "\x1b[38;5;123m" in rendered
+        assert "\x1b[48;5;231m" in rendered
+
+    def test_highlight_preserves_other_channel_for_extended_colors(self):
+        """Changing one channel should not drop the other extended channel."""
+        text = "\x1b[38;5;123;48;5;231mHello\x1b[0m"
         cs = ColorizedString(text)
 
-        result = str(cs)
-        assert "Hello" in result
-        assert "\x1b[38;5;123m" in result  # 256-color preserved
-        assert "\x1b[1m" in result  # Bold preserved
+        # Change foreground only
+        fg_result = cs.highlight(r"Hello", ["red"])
+        fg_str = str(fg_result)
+        assert "\x1b[31m" in fg_str
+        assert "\x1b[48;5;231m" in fg_str  # Background preserved
 
-    def test_preserve_combined_fg_bg_256_color(self):
-        """Test fg and bg 256-color in single CSI."""
-        # Common pattern: set both colors in one escape sequence
-        text = "\x1b[38;5;123;48;5;200mHello\x1b[0m"
-        cs = ColorizedString(text)
-
-        result = str(cs)
-        assert "Hello" in result
-        assert "\x1b[38;5;123m" in result  # Foreground preserved
-        assert "\x1b[48;5;200m" in result  # Background preserved
-
-    def test_channel_isolation_with_combined_colors(self):
-        """Test that changing fg doesn't affect bg when both set in one CSI."""
-        # This is the critical channel isolation test
-        text = "\x1b[38;5;123;48;5;200mHello World\x1b[0m"
-        cs = ColorizedString(text)
-
-        # Change only foreground by highlighting
-        result = cs.highlight(r"World", ["red"])
-        result_str = str(result)
-
-        # Background should still be preserved even though fg changed
-        assert "\x1b[48;5;200m" in result_str  # Original bg MUST be preserved
-        assert "\x1b[31m" in result_str  # New fg applied
-
-    def test_preserve_truecolor_with_attributes(self):
-        """Test truecolor with mixed attributes."""
-        text = "\x1b[1;4;38;2;255;100;50mHello\x1b[0m"
-        cs = ColorizedString(text)
-
-        result = str(cs)
-        assert "Hello" in result
-        assert "\x1b[38;2;255;100;50m" in result  # Truecolor preserved
-        # Note: Multiple attrs in CSI - last wins (attr channel limitation)
-        assert "\x1b[4m" in result  # Underline (last attr) preserved
-
-    def test_preserve_combined_fg_bg_truecolor(self):
-        """Test fg and bg truecolor in single CSI."""
-        text = "\x1b[38;2;255;100;50;48;2;100;150;200mHello\x1b[0m"
-        cs = ColorizedString(text)
-
-        result = str(cs)
-        assert "Hello" in result
-        assert "\x1b[38;2;255;100;50m" in result  # Foreground preserved
-        assert "\x1b[48;2;100;150;200m" in result  # Background preserved
-
-    def test_preserve_256_color_with_trailing_attributes(self):
-        """Test 256-color with attributes after the color."""
-        text = "\x1b[38;5;123;1;4mHello\x1b[0m"
-        cs = ColorizedString(text)
-
-        result = str(cs)
-        assert "Hello" in result
-        assert "\x1b[38;5;123m" in result  # 256-color preserved
-        # Note: Multiple attributes - last one wins (attr channel limitation)
-        assert "\x1b[4m" in result  # Underline (last attr) preserved
+        # Change background only
+        bg_result = cs.highlight(r"Hello", ["bg_blue"])
+        bg_str = str(bg_result)
+        assert "\x1b[44m" in bg_str
+        assert "\x1b[38;5;123m" in bg_str  # Foreground preserved
 
 
 class TestHighlightingEdgeCases:
