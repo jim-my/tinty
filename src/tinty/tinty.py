@@ -149,31 +149,61 @@ class ColorizedString(str):
         self._colors_at: dict[int, list[str]] = {}
 
     @staticmethod
-    def _detect_extended_color(
-        codes: list[int], code_str: str
-    ) -> Optional[tuple[str, str]]:
-        """Detect extended color sequences (256-color and truecolor).
+    def _detect_extended_colors(
+        codes: list[int],
+    ) -> list[tuple[str, str]]:
+        """Detect extended color sequences anywhere in the parameter list.
+
+        Scans the entire codes list for 256-color and truecolor subsequences.
+        A single CSI can contain multiple colors (e.g., fg and bg together).
 
         Returns:
-            (color_name, channel) tuple if extended color detected, None otherwise
+            List of (color_name, channel) tuples for each detected color
         """
-        if len(codes) < ANSI_256_COLOR_MIN_PARAMS:
-            return None
+        results = []
+        i = 0
 
-        # 256-color format: 38;5;N (foreground) or 48;5;N (background)
-        if codes[0] == ANSI_FG_256_CODE and codes[1] == ANSI_256_COLOR_TYPE:
-            return (f"__raw_ansi_fg__:{code_str}", "fg")
-        if codes[0] == ANSI_BG_256_CODE and codes[1] == ANSI_256_COLOR_TYPE:
-            return (f"__raw_ansi_bg__:{code_str}", "bg")
+        while i < len(codes):
+            # Check for 256-color: 38;5;N (fg) or 48;5;N (bg)
+            if i + 2 < len(codes):
+                if codes[i] == ANSI_FG_256_CODE and codes[i + 1] == ANSI_256_COLOR_TYPE:
+                    # Foreground 256-color
+                    color_code = f"38;5;{codes[i + 2]}"
+                    results.append((f"__raw_ansi_fg__:{color_code}", "fg"))
+                    i += 3
+                    continue
+                if codes[i] == ANSI_BG_256_CODE and codes[i + 1] == ANSI_256_COLOR_TYPE:
+                    # Background 256-color
+                    color_code = f"48;5;{codes[i + 2]}"
+                    results.append((f"__raw_ansi_bg__:{color_code}", "bg"))
+                    i += 3
+                    continue
 
-        # Truecolor format: 38;2;R;G;B (foreground) or 48;2;R;G;B (background)
-        if len(codes) >= ANSI_TRUE_COLOR_MIN_PARAMS:
-            if codes[0] == ANSI_FG_256_CODE and codes[1] == ANSI_TRUE_COLOR_TYPE:
-                return (f"__raw_ansi_fg__:{code_str}", "fg")
-            if codes[0] == ANSI_BG_256_CODE and codes[1] == ANSI_TRUE_COLOR_TYPE:
-                return (f"__raw_ansi_bg__:{code_str}", "bg")
+            # Check for truecolor: 38;2;R;G;B (fg) or 48;2;R;G;B (bg)
+            if i + 4 < len(codes):
+                if (
+                    codes[i] == ANSI_FG_256_CODE
+                    and codes[i + 1] == ANSI_TRUE_COLOR_TYPE
+                ):
+                    # Foreground truecolor
+                    color_code = f"38;2;{codes[i + 2]};{codes[i + 3]};{codes[i + 4]}"
+                    results.append((f"__raw_ansi_fg__:{color_code}", "fg"))
+                    i += 5
+                    continue
+                if (
+                    codes[i] == ANSI_BG_256_CODE
+                    and codes[i + 1] == ANSI_TRUE_COLOR_TYPE
+                ):
+                    # Background truecolor
+                    color_code = f"48;2;{codes[i + 2]};{codes[i + 3]};{codes[i + 4]}"
+                    results.append((f"__raw_ansi_bg__:{color_code}", "bg"))
+                    i += 5
+                    continue
 
-        return None
+            # Not an extended color, move to next parameter
+            i += 1
+
+        return results
 
     @staticmethod
     def _close_and_start_color(
@@ -224,7 +254,7 @@ class ColorizedString(str):
 
         # Split text into segments (text and ANSI codes)
         last_end = 0
-        for match in ansi_pattern.finditer(text):  # noqa: PLR1702
+        for match in ansi_pattern.finditer(text):
             # Add text before this ANSI code
             segment = text[last_end : match.start()]
             if segment:
@@ -235,37 +265,93 @@ class ColorizedString(str):
             code_str = match.group(1)
             codes = [int(c) for c in code_str.split(";") if c]
 
-            # Check for extended color sequences (256-color and truecolor)
-            extended_color = ColorizedString._detect_extended_color(codes, code_str)
-            if extended_color:
-                color_name, channel = extended_color
-                ColorizedString._close_and_start_color(
-                    channel, color_name, pos, active_colors, ranges
-                )
-            else:
-                # Handle standard color codes
-                for code in codes:
-                    if code == 0:
-                        # Reset - close all active colors
-                        for color_name, start_pos in active_colors.values():
-                            if start_pos < pos:
-                                ranges.append(
-                                    ColorRange(
-                                        start=start_pos,
-                                        end=pos,
-                                        color=color_name,
-                                        priority=0,  # Parsed from input, pipeline_stage=0
-                                        pipeline_stage=0,
-                                    )
-                                )
-                        active_colors = {}
-                    elif code in code_to_color:
-                        # Start a new color
-                        color_name = code_to_color[code]
-                        channel = self._get_color_channel(color_name)
+            # Process codes sequentially to maintain order (reset before color, etc.)
+            idx = 0
+            while idx < len(codes):
+                # Check for extended color sequences at current position
+                # 256-color: 38;5;N or 48;5;N
+                if idx + 2 < len(codes):
+                    if (
+                        codes[idx] == ANSI_FG_256_CODE
+                        and codes[idx + 1] == ANSI_256_COLOR_TYPE
+                    ):
+                        # Foreground 256-color
+                        color_code = f"38;5;{codes[idx + 2]}"
+                        color_name = f"__raw_ansi_fg__:{color_code}"
                         ColorizedString._close_and_start_color(
-                            channel, color_name, pos, active_colors, ranges
+                            "fg", color_name, pos, active_colors, ranges
                         )
+                        idx += 3
+                        continue
+                    if (
+                        codes[idx] == ANSI_BG_256_CODE
+                        and codes[idx + 1] == ANSI_256_COLOR_TYPE
+                    ):
+                        # Background 256-color
+                        color_code = f"48;5;{codes[idx + 2]}"
+                        color_name = f"__raw_ansi_bg__:{color_code}"
+                        ColorizedString._close_and_start_color(
+                            "bg", color_name, pos, active_colors, ranges
+                        )
+                        idx += 3
+                        continue
+
+                # Truecolor format: 38;2;R;G;B (foreground) or 48;2;R;G;B (background)
+                if idx + 4 < len(codes):
+                    if (
+                        codes[idx] == ANSI_FG_256_CODE
+                        and codes[idx + 1] == ANSI_TRUE_COLOR_TYPE
+                    ):
+                        # Foreground truecolor
+                        color_code = (
+                            f"38;2;{codes[idx + 2]};{codes[idx + 3]};{codes[idx + 4]}"
+                        )
+                        color_name = f"__raw_ansi_fg__:{color_code}"
+                        ColorizedString._close_and_start_color(
+                            "fg", color_name, pos, active_colors, ranges
+                        )
+                        idx += 5
+                        continue
+                    if (
+                        codes[idx] == ANSI_BG_256_CODE
+                        and codes[idx + 1] == ANSI_TRUE_COLOR_TYPE
+                    ):
+                        # Background truecolor
+                        color_code = (
+                            f"48;2;{codes[idx + 2]};{codes[idx + 3]};{codes[idx + 4]}"
+                        )
+                        color_name = f"__raw_ansi_bg__:{color_code}"
+                        ColorizedString._close_and_start_color(
+                            "bg", color_name, pos, active_colors, ranges
+                        )
+                        idx += 5
+                        continue
+
+                # Standard codes (reset, basic colors, attributes)
+                code = codes[idx]
+                if code == 0:
+                    # Reset - close all active colors
+                    for color_name, start_pos in active_colors.values():
+                        if start_pos < pos:
+                            ranges.append(
+                                ColorRange(
+                                    start=start_pos,
+                                    end=pos,
+                                    color=color_name,
+                                    priority=0,  # Parsed from input, pipeline_stage=0
+                                    pipeline_stage=0,
+                                )
+                            )
+                    active_colors = {}
+                elif code in code_to_color:
+                    # Start a new color
+                    color_name = code_to_color[code]
+                    channel = self._get_color_channel(color_name)
+                    ColorizedString._close_and_start_color(
+                        channel, color_name, pos, active_colors, ranges
+                    )
+
+                idx += 1
 
             last_end = match.end()
 
