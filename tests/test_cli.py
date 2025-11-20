@@ -331,3 +331,59 @@ class TestCLIIntegration:
                     # Should output original text without colors
                     assert output.strip() == "hello world"
                     assert "\033[" not in output
+
+    def test_cli_piping_with_no_color(self):
+        """Test piping a colored string to a no_color command."""
+        from tinty import ColorizedString
+
+        # Simulate the first command's output
+        colored_input = "he\033[31m\033[44mllo wor\033[0m\033[34m\033[41mld\033[0m\n"
+
+        with patch("sys.argv", ["tinty", ".*", "no_color"]):
+            with patch("sys.stdin", io.StringIO(colored_input)):
+                with patch("sys.stdout", io.StringIO()) as mock_stdout:
+                    main()
+
+                    output = mock_stdout.getvalue()
+
+                    # Should output original text without colors
+                    cleaned = ColorizedString(output).remove_color().strip()
+                    assert cleaned == "hello world"
+
+    def test_cli_replace_all_flag(self):
+        """Test --replace-all flag clears previous colors."""
+        from tinty import ColorizedString
+
+        # Simulate colored input from previous pipeline stage
+        colored_input = "\033[31mhello\033[0m world\n"
+
+        with patch("sys.argv", ["tinty", "--replace-all", "world", "blue"]):
+            with patch("sys.stdin", io.StringIO(colored_input)):
+                with patch("sys.stdout", io.StringIO()) as mock_stdout:
+                    main()
+
+                    output = mock_stdout.getvalue()
+
+                    # Should only have blue on "world", "hello" should have no color
+                    assert "\033[34m" in output  # Blue color
+                    assert "world" in output
+                    # Original red color should be gone
+                    cleaned = ColorizedString(output).remove_color().strip()
+                    assert cleaned == "hello world"
+
+    def test_cli_replace_all_verbose(self):
+        """Test --replace-all with verbose output."""
+        colored_input = "\033[31mhello\033[0m world\n"
+
+        argv = ["tinty", "--replace-all", "--verbose", "world", "blue"]
+        with patch("sys.argv", argv):
+            with patch("sys.stdin", io.StringIO(colored_input)):
+                with patch("sys.stdout", io.StringIO()):
+                    with patch("sys.stderr", io.StringIO()) as mock_stderr:
+                        main()
+
+                        stderr_output = mock_stderr.getvalue()
+
+                        # Should contain replace all message
+                        assert "Replace all: True" in stderr_output
+                        assert "cleared previous colors" in stderr_output

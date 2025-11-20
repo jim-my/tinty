@@ -52,6 +52,12 @@ Examples:
         help="Make pattern matching case sensitive",
     )
 
+    parser.add_argument(
+        "--replace-all",
+        action="store_true",
+        help="Clear all previous colors before applying new ones (useful in pipelines)",
+    )
+
     return parser
 
 
@@ -67,19 +73,37 @@ def list_colors():
 
 
 def process_line(
-    line: str, pattern: re.Pattern, colors: list[str], verbose: bool = False
+    line: str,
+    pattern: re.Pattern,
+    colors: list[str],
+    verbose: bool = False,
+    replace_all: bool = False,
 ) -> str:
     """Process a single line of input."""
     # Remove trailing newline for processing
     line = line.rstrip("\n")
 
+    # Create ColorizedString from input
     colored_str = ColorizedString(line)
+
+    # If replace_all is True, clear all existing colors by creating
+    # a new ColorizedString from the original text only
+    if replace_all:
+        colored_str = ColorizedString(
+            value=colored_str._original_text,
+            original_text=colored_str._original_text,
+            color_ranges=[],
+            pipeline_stage=0,
+        )
+
     result = colored_str.highlight(pattern, colors)
 
     if verbose:
-        print(f"Original: {line}", file=sys.stderr)
+        print(f"Original: {colored_str._original_text}", file=sys.stderr)
         print(f"Pattern: {pattern.pattern}", file=sys.stderr)
         print(f"Colors: {colors}", file=sys.stderr)
+        if replace_all:
+            print("Replace all: True (cleared previous colors)", file=sys.stderr)
 
     return str(result)
 
@@ -110,10 +134,17 @@ def main():
     except re.error:
         sys.exit(1)
 
+    # Parse colors - split comma-separated color lists
+    # e.g., ['red,blue'] -> ['red', 'blue']
+    # or ['red', 'blue'] -> ['red', 'blue'] (already split)
+    colors = []
+    for color_arg in args.colors:
+        colors.extend(color_arg.split(","))
+
     # Process input
     try:
         for line in sys.stdin:
-            result = process_line(line, pattern, args.colors, args.verbose)
+            result = process_line(line, pattern, colors, args.verbose, args.replace_all)
             print(result)
             sys.stdout.flush()
     except KeyboardInterrupt:

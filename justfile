@@ -99,7 +99,7 @@ screenshots:
     @echo "🔄 Syncing examples between README and scripts..."
     @mkdir -p docs/images scripts
     poetry run python scripts/sync_examples.py
-    chmod +x scripts/cli_examples.sh
+    chmod +x scripts/cli_examples.sh scripts/pipeline_demo.sh
     @echo "📸 Capturing screenshots with termshot..."
     @echo "Capturing basic colors example..."
     -termshot --filename docs/images/basic-colors.png --columns 80 poetry run python scripts/basic_colors.py
@@ -109,5 +109,13 @@ screenshots:
     -termshot --filename docs/images/complex-styling.png --columns 80 poetry run python scripts/complex_styling.py
     @echo "Capturing pattern highlighting example..."
     -termshot --filename docs/images/pattern-highlighting.png --columns 80 poetry run python scripts/pattern_highlighting.py
+    @echo "Capturing nested groups example..."
+    -termshot --filename docs/images/nested-groups.png --columns 80 poetry run python scripts/nested_groups.py
+    @echo "Capturing channel isolation example..."
+    -termshot --filename docs/images/channel-isolation.png --columns 80 poetry run python scripts/channel_isolation.py
+    @echo "Capturing pipeline demo..."
+    -termshot --filename docs/images/pipeline-demo.png --columns 80 poetry run scripts/pipeline_demo.sh
+    @echo "Capturing both formats demo..."
+    -termshot --filename docs/images/both-formats.png --columns 80 poetry run python scripts/both_formats.py
     @echo "✅ Screenshots generation complete (run in real terminal if termshot failed)"
     @echo "✅ README and scripts are synchronized"

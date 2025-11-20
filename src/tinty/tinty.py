@@ -1,11 +1,36 @@
 """
-Core colorization functionality.
+Core colorization functionality with deferred rendering and proper color nesting.
 """
 
 import re
-from typing import Optional, Union, cast
+from dataclasses import dataclass
+from typing import Optional, Union
 
 from .color_codes import ColorCode, ColorManager, color_manager
+
+# Priority calculation constants
+PIPELINE_STAGE_MULTIPLIER = 1_000_000
+NESTING_DEPTH_MULTIPLIER = 1_000
+
+
+@dataclass
+class ColorRange:
+    """Represents a range of text with a specific color applied.
+
+    Priority is calculated as:
+    priority = (pipeline_stage * 1M) + (nesting_depth * 1K) + application_order
+
+    This ensures:
+    - Later pipeline stages override earlier ones
+    - More nested regex groups override less nested ones
+    - Later applications override earlier ones at same depth
+    """
+
+    start: int  # Position in original text (inclusive)
+    end: int  # Position in original text (exclusive)
+    color: str  # Color name (e.g., 'red', 'bg_blue', 'bold')
+    priority: int = 0  # Higher priority wins within same channel
+    pipeline_stage: int = 0  # Which pipeline stage this was applied in
 
 
 class Colorize:
@@ -68,138 +93,533 @@ class Colorize:
 
 
 class ColorizedString(str):
-    """String subclass with colorization support."""
+    """String subclass with colorization support using deferred rendering.
 
-    def __new__(cls, value: str) -> "ColorizedString":
+    This class stores the original text and a list of color ranges separately.
+    When converted to string, it renders the colors using ANSI codes with proper
+    nesting support based on priority.
+    """
+
+    def __new__(
+        cls,
+        value: str,
+        original_text: Optional[str] = None,  # noqa: ARG004
+        color_ranges: Optional[list[ColorRange]] = None,  # noqa: ARG004
+        pipeline_stage: int = 0,  # noqa: ARG004
+    ) -> "ColorizedString":
+        # If value has ANSI codes, we'll parse them in __init__
+        # Parameters needed to match __init__ signature
         return str.__new__(cls, value)
 
-    def __init__(self, value: str) -> None:
+    def __init__(
+        self,
+        value: str,
+        original_text: Optional[str] = None,
+        color_ranges: Optional[list[ColorRange]] = None,
+        pipeline_stage: int = 0,
+    ) -> None:
         super().__init__()
         self._colorizer = Colorize()
+        self._next_priority = 0
+
+        # If original_text provided, use it; otherwise parse from value
+        if original_text is not None:
+            self._original_text = original_text
+            self._color_ranges = color_ranges or []
+            self._pipeline_stage = pipeline_stage
+        else:
+            # Parse ANSI codes from value to extract original text and ranges
+            self._original_text, self._color_ranges = self._parse_ansi(value)
+            # If we parsed any ranges from ANSI codes, we're in a pipeline
+            # Start at stage 1 so new highlights have higher priority
+            if pipeline_stage == 0 and self._color_ranges:
+                self._pipeline_stage = 1
+            else:
+                self._pipeline_stage = pipeline_stage
+
+        # Legacy support for old _colors_at API (will be removed)
         self._colors_at: dict[int, list[str]] = {}
 
+    def _parse_ansi(self, text: str) -> tuple[str, list[ColorRange]]:
+        """Parse ANSI codes from text to extract original text and color ranges.
+
+        Returns:
+            (original_text, color_ranges) where original_text has ANSI codes removed
+        """
+        # Pattern to match ANSI escape sequences
+        ansi_pattern = re.compile(r"\x1b\[([0-9;]+)m")
+
+        # Build reverse mapping: ANSI code -> color name
+        code_to_color = {}
+        for color_name, code_obj in self._colorizer._color_manager._color_map.items():
+            code_to_color[code_obj.value] = color_name
+
+        original_text = []
+        ranges: list[ColorRange] = []
+        active_colors: dict[
+            str, tuple[str, int]
+        ] = {}  # channel -> (color_name, start_pos)
+        pos = 0
+
+        # Split text into segments (text and ANSI codes)
+        last_end = 0
+        for match in ansi_pattern.finditer(text):
+            # Add text before this ANSI code
+            segment = text[last_end : match.start()]
+            if segment:
+                original_text.append(segment)
+                pos += len(segment)
+
+            # Parse ANSI code
+            code_str = match.group(1)
+            codes = [int(c) for c in code_str.split(";") if c]
+
+            for code in codes:
+                if code == 0:
+                    # Reset - close all active colors
+                    for color_name, start_pos in active_colors.values():
+                        if start_pos < pos:
+                            ranges.append(
+                                ColorRange(
+                                    start=start_pos,
+                                    end=pos,
+                                    color=color_name,
+                                    priority=0,  # Parsed from input, pipeline_stage=0
+                                    pipeline_stage=0,
+                                )
+                            )
+                    active_colors = {}
+                elif code in code_to_color:
+                    # Start a new color
+                    color_name = code_to_color[code]
+                    channel = self._get_color_channel(color_name)
+
+                    # Close previous color in this channel if any
+                    if channel in active_colors:
+                        prev_color, start_pos = active_colors[channel]
+                        if start_pos < pos:
+                            ranges.append(
+                                ColorRange(
+                                    start=start_pos,
+                                    end=pos,
+                                    color=prev_color,
+                                    priority=0,
+                                    pipeline_stage=0,
+                                )
+                            )
+
+                    # Start new color in this channel
+                    active_colors[channel] = (color_name, pos)
+
+            last_end = match.end()
+
+        # Add remaining text after last ANSI code
+        if last_end < len(text):
+            segment = text[last_end:]
+            original_text.append(segment)
+            pos += len(segment)
+
+        # Close any remaining active colors
+        for color_name, start_pos in active_colors.values():
+            if start_pos < pos:
+                ranges.append(
+                    ColorRange(
+                        start=start_pos,
+                        end=pos,
+                        color=color_name,
+                        priority=0,
+                        pipeline_stage=0,
+                    )
+                )
+
+        return "".join(original_text), ranges
+
+    def _normalize_color_name(self, color_name: str) -> str:  # noqa: PLR6301
+        """Normalize color names to standard format.
+
+        Converts red_bg -> bg_red, etc.
+        """
+        color_lower = color_name.lower()
+
+        # Convert color_bg format to bg_color format
+        if color_lower.endswith("_bg") and not color_lower.startswith("bg_"):
+            # Extract color part (everything except _bg suffix)
+            color_part = color_lower[:-3]  # Remove '_bg'
+            return f"bg_{color_part}"
+
+        return color_name
+
+    def _get_color_channel(self, color_name: str) -> str:  # noqa: PLR6301
+        """Determine which channel a color belongs to: 'fg', 'bg', or 'attr'."""
+        color_lower = color_name.lower()
+        # Check for background colors (support both bg_red and red_bg formats)
+        if color_lower.startswith("bg_") or color_lower.endswith("_bg"):
+            return "bg"
+        if color_lower in {
+            "bright",
+            "dim",
+            "underline",
+            "blink",
+            "strikethrough",
+            "bold",
+            "invert",
+            "swapcolor",
+            "hidden",
+        }:
+            return "attr"
+        return "fg"
+
+    def _render(self) -> str:
+        """Render the original text with color ranges applied as ANSI codes.
+
+        This handles proper nesting by:
+        1. Finding all transition points (where any range starts/ends)
+        2. For each segment, determining active colors by priority within each channel
+        3. Outputting appropriate ANSI codes and text
+        """
+        if not self._color_ranges:
+            return self._original_text
+
+        # Find all transition points
+        transitions = {0, len(self._original_text)}
+        for range_ in self._color_ranges:
+            transitions.add(range_.start)
+            transitions.add(range_.end)
+
+        sorted_transitions = sorted(transitions)
+
+        # Build output segment by segment
+        result_parts = []
+        current_colors: dict[str, Optional[str]] = {
+            "fg": None,
+            "bg": None,
+            "attr": None,
+        }
+
+        for i in range(len(sorted_transitions) - 1):
+            start_pos = sorted_transitions[i]
+            end_pos = sorted_transitions[i + 1]
+
+            if start_pos == end_pos:
+                continue
+
+            # Find active colors at this position (highest priority in each channel)
+            active_ranges = [
+                r for r in self._color_ranges if r.start <= start_pos < r.end
+            ]
+
+            # Group by channel and pick highest priority
+            new_colors: dict[str, Optional[str]] = {
+                "fg": None,
+                "bg": None,
+                "attr": None,
+            }
+            for channel in ["fg", "bg", "attr"]:
+                channel_ranges = [
+                    r
+                    for r in active_ranges
+                    if self._get_color_channel(r.color) == channel
+                ]
+                if channel_ranges:
+                    # Pick highest priority
+                    best = max(channel_ranges, key=lambda r: r.priority)
+                    new_colors[channel] = best.color
+
+            # Output ANSI codes if colors changed
+            if new_colors != current_colors:
+                codes = []
+
+                # Build combined ANSI code for all active colors
+                for channel in ["fg", "bg", "attr"]:
+                    color_name = new_colors[channel]
+                    if color_name:
+                        try:
+                            # Normalize color name (e.g., red_bg -> bg_red)
+                            normalized = self._normalize_color_name(color_name)
+                            codes.append(self._colorizer.start_color(normalized))
+                        except ValueError:
+                            # Invalid color name, skip
+                            pass
+
+                # Always reset if we had any previous colors, then apply new ones
+                # This ensures clean state
+                if current_colors != {"fg": None, "bg": None, "attr": None}:
+                    result_parts.append(self._colorizer.end_color())
+
+                # Apply new color codes
+                if codes:
+                    result_parts.extend(codes)
+
+                current_colors = new_colors
+
+            # Output text segment
+            result_parts.append(self._original_text[start_pos:end_pos])
+
+        # Reset at end if we have active colors
+        if current_colors != {"fg": None, "bg": None, "attr": None}:
+            result_parts.append(self._colorizer.end_color())
+
+        return "".join(result_parts)
+
+    def __str__(self) -> str:
+        """Convert to string by rendering color ranges."""
+        return self._render()
+
     def colorize(self, color_code: Union[str, ColorCode]) -> "ColorizedString":
-        """Apply color to the string."""
-        colored_text = self._colorizer.colorize(str(self), color_code)
-        return ColorizedString(colored_text)
+        """Apply color to the entire string."""
+        if isinstance(color_code, ColorCode):
+            color_name = color_code.name.lower()
+        else:
+            color_name = str(color_code)
+
+        # Normalize color name (e.g., red_bg -> bg_red)
+        color_name = self._normalize_color_name(color_name)
+
+        # Create new ColorRange for entire text
+        priority = (
+            self._pipeline_stage * PIPELINE_STAGE_MULTIPLIER
+            + NESTING_DEPTH_MULTIPLIER  # depth=1 for whole-string colorization
+            + self._next_priority
+        )
+
+        new_range = ColorRange(
+            start=0,
+            end=len(self._original_text),
+            color=color_name,
+            priority=priority,
+            pipeline_stage=self._pipeline_stage,
+        )
+
+        # Create new ColorizedString with added range
+        new_ranges = self._color_ranges.copy()
+        new_ranges.append(new_range)
+
+        result = ColorizedString(
+            value=self._original_text,  # Not rendered yet
+            original_text=self._original_text,
+            color_ranges=new_ranges,
+            pipeline_stage=self._pipeline_stage,
+        )
+        result._next_priority = self._next_priority + 1
+
+        return result
 
     def colorize_random(self, code: Optional[int] = None) -> "ColorizedString":
         """Apply random color to the string."""
-        colored_text = self._colorizer.colorize_random(str(self), code)
-        return ColorizedString(colored_text)
+        random_color = self._colorizer._color_manager.generate_random_color(code)
+        return self.colorize(random_color)
 
     def remove_color(self) -> "ColorizedString":
-        """Remove color codes from the string."""
-        clean_text = self._colorizer.remove_color(str(self))
-        return ColorizedString(clean_text)
+        """Remove all color codes and return plain text."""
+        # Just return the original text without any color ranges
+        return ColorizedString(
+            value=self._original_text,
+            original_text=self._original_text,
+            color_ranges=[],
+            pipeline_stage=self._pipeline_stage,
+        )
 
-    def add_color(self, start: int, end: int, color: str) -> None:
-        """Add color information for range highlighting."""
-        if not color:
-            return
+    def _calculate_group_nesting_depth(  # noqa: PLR6301
+        self, pattern_str: str
+    ) -> dict[int, int]:
+        """Calculate nesting depth for each capture group in a regex pattern.
 
-        colors = color.split(",")
+        Returns a dict mapping group number to nesting depth.
+        Group 0 (entire match) has depth 0, first-level groups have depth 1, etc.
+        """
+        depth_map = {0: 0}  # Group 0 is the entire match
+        current_depth = 0
+        group_num = 0
+        i = 0
 
-        if start not in self._colors_at:
-            self._colors_at[start] = []
-        if end not in self._colors_at:
-            self._colors_at[end] = []
+        while i < len(pattern_str):
+            char = pattern_str[i]
 
-        self._colors_at[start].extend(colors)
-        self._colors_at[end].insert(0, "no_color")
+            # Skip escaped characters
+            if char == "\\" and i + 1 < len(pattern_str):
+                i += 2
+                continue
+
+            # Skip character classes
+            if char == "[":
+                i += 1
+                while i < len(pattern_str) and pattern_str[i] != "]":
+                    if pattern_str[i] == "\\" and i + 1 < len(pattern_str):
+                        i += 2
+                    else:
+                        i += 1
+                i += 1
+                continue
+
+            # Handle opening parenthesis
+            if char == "(":
+                # Check if it's a non-capturing group
+                if i + 1 < len(pattern_str) and pattern_str[i + 1] == "?":
+                    # Non-capturing group, don't increment group_num
+                    # But still increase depth for nested groups
+                    current_depth += 1
+                else:
+                    # Capturing group
+                    current_depth += 1
+                    group_num += 1
+                    depth_map[group_num] = current_depth
+
+            elif char == ")":
+                current_depth -= 1
+
+            i += 1
+
+        return depth_map
 
     def highlight(
         self, pattern: Union[str, re.Pattern], colors: Union[str, list[str]]
     ) -> "ColorizedString":
-        """Highlight text matching pattern with given colors."""
-        if isinstance(pattern, str):
-            pattern = re.compile(pattern, re.IGNORECASE)
+        """Highlight text matching pattern with given colors.
 
+        Matches against the original text (ignoring any existing ANSI codes).
+        Inner (more nested) groups have higher priority than outer groups.
+        """
         if isinstance(colors, str):
             colors = [colors]
 
-        matches = list(pattern.finditer(str(self)))
+        # Compile pattern if needed
+        if isinstance(pattern, str):
+            pattern_str = pattern
+            pattern_obj = re.compile(pattern, re.IGNORECASE)
+        else:
+            pattern_obj = pattern
+            pattern_str = pattern.pattern
+
+        # Calculate nesting depth for each group
+        nesting_depths = self._calculate_group_nesting_depth(pattern_str)
+
+        # Match against original text (not rendered ANSI string!)
+        matches = list(pattern_obj.finditer(self._original_text))
         if not matches:
-            return ColorizedString(str(self))
+            # No matches, return self unchanged
+            return ColorizedString(
+                value=self._original_text,
+                original_text=self._original_text,
+                color_ranges=self._color_ranges.copy(),
+                pipeline_stage=self._pipeline_stage,
+            )
 
-        new_self = ColorizedString(str(self))
+        # Collect new color ranges from all matches
+        new_ranges = self._color_ranges.copy()
 
-        # Process matches in reverse order to maintain positions
-        for match in reversed(matches):
-            if match.lastindex is None or match.lastindex == 0:
-                # No groups, highlight entire match
+        # Get number of groups from pattern
+        num_groups = pattern_obj.groups
+
+        for match in matches:
+            if num_groups == 0:
+                # No groups, highlight entire match (group 0)
                 groups_to_highlight = [0]
             else:
-                # Highlight all groups except group 0 (entire match)
-                groups_to_highlight = list(range(1, match.lastindex + 1))
+                # Highlight all capturing groups (not group 0)
+                groups_to_highlight = list(range(1, num_groups + 1))
 
-            # Sort groups by end position (reverse order)
-            groups_data = [
-                {
-                    "start": match.start(grp),
-                    "end": match.end(grp),
-                    "group": grp,
-                    "text": match.group(grp),
-                }
-                for grp in groups_to_highlight
-                if match.group(grp) is not None
-            ]
+            # Create ColorRange for each group
+            for grp in groups_to_highlight:
+                if match.group(grp) is None:
+                    continue
 
-            groups_data.sort(key=lambda x: (x["end"], x["group"]), reverse=True)
-
-            # Apply colors to each group
-            for group_data in groups_data:
-                grp = cast("int", group_data["group"])
-                color_index = (grp - 1) % len(colors)
+                # Determine color for this group
+                color_index = 0 if grp == 0 else (grp - 1) % len(colors)
                 color = colors[color_index]
-                start = cast("int", group_data["start"])
-                end = cast("int", group_data["end"])
-                new_self.add_color(start, end, color)
 
-        # Apply colors
-        if new_self._colors_at:
-            result = str(new_self)
-            for pos in sorted(new_self._colors_at.keys(), reverse=True):
-                color_codes = []
-                for color_name in new_self._colors_at[pos]:
-                    if color_name == "no_color":
-                        color_codes.append(new_self._colorizer.end_color())
-                    else:
-                        try:
-                            color_codes.append(
-                                new_self._colorizer.start_color(color_name)
-                            )
-                        except ValueError:
-                            continue
+                # Normalize color name (e.g., red_bg -> bg_red)
+                color = self._normalize_color_name(color)
 
-                if color_codes:
-                    result = result[:pos] + "".join(color_codes) + result[pos:]
+                # Calculate priority based on nesting depth
+                # For group 0 (entire match with no groups), use depth 1
+                nesting_depth = 1 if grp == 0 else nesting_depths.get(grp, 1)
 
-            return ColorizedString(result)
+                priority = (
+                    self._pipeline_stage * PIPELINE_STAGE_MULTIPLIER
+                    + nesting_depth * NESTING_DEPTH_MULTIPLIER
+                    + self._next_priority
+                )
 
-        return new_self
+                # Create range
+                new_range = ColorRange(
+                    start=match.start(grp),
+                    end=match.end(grp),
+                    color=color,
+                    priority=priority,
+                    pipeline_stage=self._pipeline_stage,
+                )
+                new_ranges.append(new_range)
+                self._next_priority += 1
+
+        # Return new ColorizedString with added ranges
+        result = ColorizedString(
+            value=self._original_text,
+            original_text=self._original_text,
+            color_ranges=new_ranges,
+            pipeline_stage=self._pipeline_stage,
+        )
+        result._next_priority = self._next_priority
+
+        return result
 
     def highlight_at(
         self, positions: list[int], color: str = "fg_yellow"
     ) -> "ColorizedString":
-        """Highlight characters at specific positions."""
+        """Highlight characters at specific positions in the original text."""
         if not positions:
-            return ColorizedString(str(self))
+            return ColorizedString(
+                value=self._original_text,
+                original_text=self._original_text,
+                color_ranges=self._color_ranges.copy(),
+                pipeline_stage=self._pipeline_stage,
+            )
 
-        result = list(str(self))
-        swap_color = self._colorizer.start_color("swapcolor")
+        # Normalize color name
+        color = self._normalize_color_name(color)
 
-        # Apply highlighting in reverse order to maintain positions
-        for pos in sorted(set(positions), reverse=True):
-            if 0 <= pos < len(result):
-                char = result[pos]
-                colored_char = (
-                    f"{self._colorizer.start_color(color)}{swap_color}{char}"
-                    f"{self._colorizer.end_color()}"
+        new_ranges = self._color_ranges.copy()
+
+        # Create a ColorRange for each character position
+        # Use high priority so they override existing colors
+        for pos in sorted(set(positions)):
+            if 0 <= pos < len(self._original_text):
+                # Calculate priority
+                priority = (
+                    self._pipeline_stage * PIPELINE_STAGE_MULTIPLIER
+                    + 2 * NESTING_DEPTH_MULTIPLIER  # depth=2 for individual chars
+                    + self._next_priority
                 )
-                result[pos] = colored_char
 
-        return ColorizedString("".join(result))
+                # Create range for single character
+                new_range = ColorRange(
+                    start=pos,
+                    end=pos + 1,
+                    color=color,
+                    priority=priority,
+                    pipeline_stage=self._pipeline_stage,
+                )
+                new_ranges.append(new_range)
+                self._next_priority += 1
+
+                # Also add swapcolor attribute
+                swap_range = ColorRange(
+                    start=pos,
+                    end=pos + 1,
+                    color="swapcolor",
+                    priority=priority,
+                    pipeline_stage=self._pipeline_stage,
+                )
+                new_ranges.append(swap_range)
+
+        result = ColorizedString(
+            value=self._original_text,
+            original_text=self._original_text,
+            color_ranges=new_ranges,
+            pipeline_stage=self._pipeline_stage,
+        )
+        result._next_priority = self._next_priority
+
+        return result
 
     def __getattr__(self, name: str) -> "ColorizedString":
         """Dynamic color methods for strings (e.g., "text".red())."""

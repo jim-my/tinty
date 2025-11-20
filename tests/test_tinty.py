@@ -144,16 +144,6 @@ class TestColorizedString:
         assert isinstance(clean, ColorizedString)
         assert str(clean) == "hello world"
 
-    def test_add_color(self):
-        """Test adding color information."""
-        cs = ColorizedString("hello")
-        cs.add_color(0, 2, "red")
-
-        assert 0 in cs._colors_at
-        assert 2 in cs._colors_at
-        assert "red" in cs._colors_at[0]
-        assert "no_color" in cs._colors_at[2]
-
     def test_highlight_simple_pattern(self):
         """Test highlighting with simple pattern."""
         cs = ColorizedString("hello world")
@@ -260,9 +250,8 @@ class TestHighlightingEdgeCases:
         cs = ColorizedString("")
 
         result = cs.highlight(r".*", ["red"])
-        # Even empty strings get color codes when matched
-        assert "\033[31m" in str(result)
-        assert "\033[0m" in str(result)
+        # Empty strings produce empty ranges which are not colored
+        assert str(result) == ""
 
     def test_highlight_special_regex_chars(self):
         """Test highlighting with special regex characters."""
