@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Tinty Quickstart Example
+PipeTint Quickstart Example
 
 This example demonstrates the modern, production-safe colorization API.
 All monkey patching has been removed for safety and reliability.
@@ -19,7 +19,7 @@ from pipetint import C, ColorString, colored, txt
 def main():
     """Demonstrate the modern colorize API."""
 
-    print("🎨 Tinty - Modern Production-Safe API")
+    print("🎨 PipeTint - Modern Production-Safe API")
     print("=" * 45)
     print()
 

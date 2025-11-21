@@ -175,7 +175,7 @@ def demo_complex_example():
 
 def main():
     """Run all demos."""
-    print("🎨 Tinty Library Demo")
+    print("🎨 PipeTint Library Demo")
     print("=" * 50)
 
     demo_basic_colorization()

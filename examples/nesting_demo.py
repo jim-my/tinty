@@ -12,7 +12,7 @@ This demonstrates:
 from pipetint import ColorizedString
 
 print("=" * 60)
-print("TINTY COLOR NESTING DEMO")
+print("PIPETINT COLOR NESTING DEMO")
 print("=" * 60)
 print()
 
