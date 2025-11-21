@@ -91,9 +91,9 @@ class TestProcessLine:
     def test_process_line_basic(self):
         """Test basic line processing."""
         pattern = re.compile(r"l", re.IGNORECASE)
-        colors = ["red"]
+        color_groups = [["red"]]
 
-        result = process_line("hello world\n", pattern, colors)
+        result = process_line("hello world\n", pattern, color_groups)
 
         # Should contain color codes
         assert "\033[31m" in result  # Red color
@@ -108,19 +108,19 @@ class TestProcessLine:
     def test_process_line_no_match(self):
         """Test line processing with no match."""
         pattern = re.compile(r"xyz", re.IGNORECASE)
-        colors = ["red"]
+        color_groups = [["red"]]
 
-        result = process_line("hello world\n", pattern, colors)
+        result = process_line("hello world\n", pattern, color_groups)
 
         # Should be unchanged (except newline removal)
         assert result == "hello world"
 
     def test_process_line_multiple_colors(self):
-        """Test line processing with multiple colors."""
+        """Test line processing with multiple colors for different groups."""
         pattern = re.compile(r"(h)(ello)", re.IGNORECASE)
-        colors = ["red", "blue"]
+        color_groups = [["red"], ["blue"]]
 
-        result = process_line("hello world\n", pattern, colors)
+        result = process_line("hello world\n", pattern, color_groups)
 
         # Should contain both colors
         assert "\033[31m" in result or "\033[34m" in result
@@ -129,20 +129,20 @@ class TestProcessLine:
     def test_process_line_verbose(self):
         """Test line processing with verbose output."""
         pattern = re.compile(r"l", re.IGNORECASE)
-        colors = ["red"]
+        color_groups = [["red"]]
 
         # Capture stderr
         captured_stderr = io.StringIO()
 
         with patch("sys.stderr", captured_stderr):
-            process_line("hello world\n", pattern, colors, verbose=True)
+            process_line("hello world\n", pattern, color_groups, verbose=True)
 
         stderr_output = captured_stderr.getvalue()
 
         # Should contain verbose information
         assert "Original:" in stderr_output
         assert "Pattern:" in stderr_output
-        assert "Colors:" in stderr_output
+        assert "Color groups:" in stderr_output
 
 
 class TestMain:
@@ -256,7 +256,7 @@ class TestMain:
                         # Should contain verbose output
                         assert "Original:" in stderr_output
                         assert "Pattern:" in stderr_output
-                        assert "Colors:" in stderr_output
+                        assert "Color groups:" in stderr_output
 
 
 class TestCLIIntegration:
@@ -444,3 +444,39 @@ class TestCLIIntegration:
                     assert "\033[31m" in output
                     cleaned = ColorizedString(output).remove_color()
                     assert "hello world" in cleaned
+
+    def test_cli_multiple_colors_per_group(self):
+        """Test that comma-separated colors apply to the same capture group."""
+        test_input = "hello world\n"
+
+        # red,swapcolor should both apply to group 1 ("hello")
+        with patch("sys.argv", ["tinty", "(.{5}).*", "red,swapcolor"]):
+            with patch("sys.stdin", io.StringIO(test_input)):
+                with patch("sys.stdout", io.StringIO()) as mock_stdout:
+                    main()
+
+                    output = mock_stdout.getvalue()
+
+                    # Should have both red (31) and swapcolor/invert (7)
+                    assert "\033[31m" in output  # Red
+                    assert "\033[7m" in output  # Swapcolor/invert
+
+    def test_cli_multiple_groups_multiple_colors(self):
+        """Test multiple groups with multiple colors each."""
+        test_input = "hello world\n"
+
+        # Group 1 (hello): red,bold  Group 2 (world): blue,underline
+        argv = ["tinty", "(hello) (world)", "red,bold", "blue,underline"]
+        with patch("sys.argv", argv):
+            with patch("sys.stdin", io.StringIO(test_input)):
+                with patch("sys.stdout", io.StringIO()) as mock_stdout:
+                    main()
+
+                    output = mock_stdout.getvalue()
+
+                    # Group 1 should have red (31) and bold/bright (1)
+                    assert "\033[31m" in output  # Red
+                    assert "\033[1m" in output  # Bold/bright
+                    # Group 2 should have blue (34) and underline (4)
+                    assert "\033[34m" in output  # Blue
+                    assert "\033[4m" in output  # Underline

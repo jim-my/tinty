@@ -84,11 +84,21 @@ def list_colors():
 def process_line(
     line: str,
     pattern: re.Pattern,
-    colors: list[str],
+    color_groups: list[list[str]],
     verbose: bool = False,
     replace_all: bool = False,
 ) -> str:
-    """Process a single line of input."""
+    """Process a single line of input.
+
+    Args:
+        line: Input line to process
+        pattern: Compiled regex pattern
+        color_groups: List of color lists, one per capture group.
+                      e.g., [['red', 'bold'], ['blue']] means group 1 gets red+bold,
+                      group 2 gets blue.
+        verbose: Enable verbose output
+        replace_all: Clear previous colors before applying new ones
+    """
     # Remove trailing newline for processing
     line = line.rstrip("\n")
 
@@ -106,12 +116,24 @@ def process_line(
             raw_sequences=[],
         )
 
-    result = colored_str.highlight(pattern, colors)
+    # Apply colors layer by layer
+    # Each "layer" takes the nth color from each group
+    max_colors = max((len(g) for g in color_groups), default=0)
+    result = colored_str
+    for layer in range(max_colors):
+        layer_colors = []
+        for group_colors in color_groups:
+            if layer < len(group_colors):
+                layer_colors.append(group_colors[layer])
+            else:
+                # No more colors for this group, use empty string to skip
+                layer_colors.append("")
+        result = result.highlight(pattern, layer_colors)
 
     if verbose:
         print(f"Original: {colored_str._original_text}", file=sys.stderr)
         print(f"Pattern: {pattern.pattern}", file=sys.stderr)
-        print(f"Colors: {colors}", file=sys.stderr)
+        print(f"Color groups: {color_groups}", file=sys.stderr)
         if replace_all:
             print("Replace all: True (cleared previous colors)", file=sys.stderr)
 
@@ -144,12 +166,13 @@ def main():
     except re.error:
         sys.exit(1)
 
-    # Parse colors - split comma-separated color lists
-    # e.g., ['red,blue'] -> ['red', 'blue']
-    # or ['red', 'blue'] -> ['red', 'blue'] (already split)
-    colors = []
+    # Parse colors - each argument is a group of colors for one capture group
+    # e.g., ['red,bold', 'blue'] -> [['red', 'bold'], ['blue']]
+    # This means group 1 gets red+bold, group 2 gets blue
+    color_groups = []
     for color_arg in args.colors:
-        colors.extend(color_arg.split(","))
+        group_colors = [c.strip() for c in color_arg.split(",") if c.strip()]
+        color_groups.append(group_colors)
 
     # Configure line-buffered output if requested
     # Uses contextlib.suppress for cleaner handling of missing reconfigure method
@@ -160,7 +183,9 @@ def main():
     # Process input
     try:
         for line in sys.stdin:
-            result = process_line(line, pattern, colors, args.verbose, args.replace_all)
+            result = process_line(
+                line, pattern, color_groups, args.verbose, args.replace_all
+            )
             print(result)
     except KeyboardInterrupt:
         sys.exit(1)
