@@ -119,6 +119,7 @@ class ColorizedString(str):
         original_text: Optional[str] = None,  # noqa: ARG004
         color_ranges: Optional[list[ColorRange]] = None,  # noqa: ARG004
         pipeline_stage: int = 0,  # noqa: ARG004
+        raw_sequences: Optional[list[tuple[int, str]]] = None,  # noqa: ARG004
     ) -> "ColorizedString":
         # If value has ANSI codes, we'll parse them in __init__
         # Parameters needed to match __init__ signature
@@ -130,6 +131,7 @@ class ColorizedString(str):
         original_text: Optional[str] = None,
         color_ranges: Optional[list[ColorRange]] = None,
         pipeline_stage: int = 0,
+        raw_sequences: Optional[list[tuple[int, str]]] = None,
     ) -> None:
         super().__init__()
         self._colorizer = Colorize()
@@ -140,9 +142,14 @@ class ColorizedString(str):
             self._original_text = original_text
             self._color_ranges = color_ranges or []
             self._pipeline_stage = pipeline_stage
+            self._raw_sequences = raw_sequences or []
         else:
             # Parse ANSI codes from value to extract original text and ranges
-            self._original_text, self._color_ranges = self._parse_ansi(value)
+            (
+                self._original_text,
+                self._color_ranges,
+                self._raw_sequences,
+            ) = self._parse_ansi(value)
             # If we parsed any ranges from ANSI codes, we're in a pipeline
             # Start at stage 1 so new highlights have higher priority
             if pipeline_stage == 0 and self._color_ranges:
@@ -200,7 +207,6 @@ class ColorizedString(str):
         ranges: list[ColorRange],
     ) -> None:
         """Close previous color in channel (if any) and start new color."""
-        # Close previous color in this channel if any
         if channel in active_colors:
             prev_color, start_pos = active_colors[channel]
             if start_pos < pos:
@@ -213,15 +219,38 @@ class ColorizedString(str):
                         pipeline_stage=0,
                     )
                 )
-
-        # Start new color in this channel
         active_colors[channel] = (color_name, pos)
 
-    def _parse_ansi(self, text: str) -> tuple[str, list[ColorRange]]:
+    @staticmethod
+    def _add_active_colors(
+        active_colors: dict[str, tuple[str, int]], pos: int, ranges: list[ColorRange]
+    ) -> bool:
+        """Close all active colors and emit ranges. Returns True if any were closed."""
+        closed_any = False
+        for color_name, start_pos in active_colors.values():
+            if start_pos < pos:
+                ranges.append(
+                    ColorRange(
+                        start=start_pos,
+                        end=pos,
+                        color=color_name,
+                        priority=(0, 0, 0),
+                        pipeline_stage=0,
+                    )
+                )
+                closed_any = True
+        active_colors.clear()
+        return closed_any
+
+    def _parse_ansi(  # noqa: PLR0914
+        self, text: str
+    ) -> tuple[str, list[ColorRange], list[tuple[int, str]]]:
         """Parse ANSI codes from text to extract original text and color ranges.
 
         Returns:
-            (original_text, color_ranges) where original_text has ANSI codes removed
+            (original_text, color_ranges, raw_sequences)
+            where original_text has ANSI codes removed and raw_sequences
+            contains passthrough ANSI codes we don't understand yet.
         """
         # Pattern to match ANSI escape sequences
         ansi_pattern = re.compile(r"\x1b\[([0-9;]+)m")
@@ -233,6 +262,7 @@ class ColorizedString(str):
 
         original_text = []
         ranges: list[ColorRange] = []
+        raw_sequences: list[tuple[int, str]] = []
         active_colors: dict[
             str, tuple[str, int]
         ] = {}  # channel -> (color_name, start_pos)
@@ -253,27 +283,15 @@ class ColorizedString(str):
 
             # Handle standard and extended codes in sequence order
             index = 0
+            handled_unknown = False
             while index < len(codes):
                 code = codes[index]
 
                 # Reset - close all active colors
                 if code == 0:
-                    for color_name, start_pos in active_colors.values():
-                        if start_pos < pos:
-                            ranges.append(
-                                ColorRange(
-                                    start=start_pos,
-                                    end=pos,
-                                    color=color_name,
-                                    priority=(
-                                        0,
-                                        0,
-                                        0,
-                                    ),  # Parsed from input, pipeline_stage=0
-                                    pipeline_stage=0,
-                                )
-                            )
-                    active_colors = {}
+                    closed = self._add_active_colors(active_colors, pos, ranges)
+                    if not closed:
+                        raw_sequences.append((pos, "\x1b[0m"))
                     index += 1
                     continue
 
@@ -296,8 +314,18 @@ class ColorizedString(str):
                     ColorizedString._close_and_start_color(
                         channel, color_name, pos, active_colors, ranges
                     )
+                else:
+                    remaining = ";".join(str(c) for c in codes[index:])
+                    raw_sequences.append((pos, f"\x1b[{remaining}m"))
+                    handled_unknown = True
+                    break
 
                 index += 1
+
+            if handled_unknown:
+                # Skip further processing for this ANSI sequence
+                last_end = match.end()
+                continue
 
             last_end = match.end()
 
@@ -308,19 +336,10 @@ class ColorizedString(str):
             pos += len(segment)
 
         # Close any remaining active colors
-        for color_name, start_pos in active_colors.values():
-            if start_pos < pos:
-                ranges.append(
-                    ColorRange(
-                        start=start_pos,
-                        end=pos,
-                        color=color_name,
-                        priority=(0, 0, 0),
-                        pipeline_stage=0,
-                    )
-                )
+        if active_colors:
+            self._add_active_colors(active_colors, pos, ranges)
 
-        return "".join(original_text), ranges
+        return "".join(original_text), ranges, raw_sequences
 
     def _normalize_color_name(self, color_name: str) -> str:  # noqa: PLR6301
         """Normalize color names to standard format.
@@ -362,7 +381,7 @@ class ColorizedString(str):
             return "attr"
         return "fg"
 
-    def _render(self) -> str:
+    def _render(self) -> str:  # noqa: PLR0914
         """Render the original text with color ranges applied as ANSI codes.
 
         This handles proper nesting by:
@@ -370,7 +389,8 @@ class ColorizedString(str):
         2. For each segment, determining active colors by priority within each channel
         3. Outputting appropriate ANSI codes and text
         """
-        if not self._color_ranges:
+        raw_sequences = getattr(self, "_raw_sequences", [])
+        if not self._color_ranges and not raw_sequences:
             return self._original_text
 
         # Find all transition points
@@ -380,6 +400,10 @@ class ColorizedString(str):
             transitions.add(range_.end)
 
         sorted_transitions = sorted(transitions)
+
+        raw_sequences_by_pos: dict[int, list[str]] = {}
+        for pos, seq in raw_sequences:
+            raw_sequences_by_pos.setdefault(pos, []).append(seq)
 
         # Build output segment by segment
         result_parts = []
@@ -453,12 +477,16 @@ class ColorizedString(str):
 
                 current_colors = new_colors
 
+            result_parts.extend(raw_sequences_by_pos.get(start_pos, []))
+
             # Output text segment
             result_parts.append(self._original_text[start_pos:end_pos])
 
         # Reset at end if we have active colors
         if current_colors != {"fg": None, "bg": None, "attr": None}:
             result_parts.append(self._colorizer.end_color())
+
+        result_parts.extend(raw_sequences_by_pos.get(len(self._original_text), []))
 
         return "".join(result_parts)
 
@@ -501,6 +529,7 @@ class ColorizedString(str):
             original_text=self._original_text,
             color_ranges=new_ranges,
             pipeline_stage=self._pipeline_stage,
+            raw_sequences=self._raw_sequences.copy(),
         )
         result._next_priority = self._next_priority + 1
 
@@ -519,6 +548,7 @@ class ColorizedString(str):
             original_text=self._original_text,
             color_ranges=[],
             pipeline_stage=self._pipeline_stage,
+            raw_sequences=[],
         )
 
     def _calculate_group_nesting_depth(  # noqa: PLR6301
@@ -662,6 +692,7 @@ class ColorizedString(str):
                 original_text=self._original_text,
                 color_ranges=self._color_ranges.copy(),
                 pipeline_stage=self._pipeline_stage,
+                raw_sequences=self._raw_sequences.copy(),
             )
 
         # Collect new color ranges from all matches
@@ -718,6 +749,7 @@ class ColorizedString(str):
             original_text=self._original_text,
             color_ranges=new_ranges,
             pipeline_stage=self._pipeline_stage,
+            raw_sequences=self._raw_sequences.copy(),
         )
         result._next_priority = self._next_priority
 
@@ -733,6 +765,7 @@ class ColorizedString(str):
                 original_text=self._original_text,
                 color_ranges=self._color_ranges.copy(),
                 pipeline_stage=self._pipeline_stage,
+                raw_sequences=self._raw_sequences.copy(),
             )
 
         # Normalize color name
@@ -778,6 +811,7 @@ class ColorizedString(str):
             original_text=self._original_text,
             color_ranges=new_ranges,
             pipeline_stage=self._pipeline_stage,
+            raw_sequences=self._raw_sequences.copy(),
         )
         result._next_priority = self._next_priority
 

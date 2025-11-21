@@ -103,6 +103,7 @@ def process_line(
             original_text=colored_str._original_text,
             color_ranges=[],
             pipeline_stage=0,
+            raw_sequences=[],
         )
 
     result = colored_str.highlight(pattern, colors)
