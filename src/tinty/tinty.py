@@ -718,6 +718,10 @@ class ColorizedString(str):
                 color_index = 0 if grp == 0 else (grp - 1) % len(colors)
                 color = colors[color_index]
 
+                # Skip empty colors (used to selectively apply colors to specific groups)
+                if not color or not color.strip():
+                    continue
+
                 # Normalize color name (e.g., red_bg -> bg_red)
                 color = self._normalize_color_name(color)
 
