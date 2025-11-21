@@ -1,6 +1,7 @@
 """Command-line interface for colorize."""
 
 import argparse
+import contextlib
 import re
 import sys
 
@@ -56,6 +57,14 @@ Examples:
         "--replace-all",
         action="store_true",
         help="Clear all previous colors before applying new ones (useful in pipelines)",
+    )
+
+    parser.add_argument(
+        "-u",
+        "--unbuffered",
+        action="store_true",
+        help="Force line-buffered output (flush after each line). "
+        "Useful for real-time log streaming without external tools like stdbuf.",
     )
 
     return parser
@@ -141,12 +150,17 @@ def main():
     for color_arg in args.colors:
         colors.extend(color_arg.split(","))
 
+    # Configure line-buffered output if requested
+    # Uses contextlib.suppress for cleaner handling of missing reconfigure method
+    if args.unbuffered:
+        with contextlib.suppress(AttributeError):
+            sys.stdout.reconfigure(line_buffering=True)  # type: ignore[union-attr]
+
     # Process input
     try:
         for line in sys.stdin:
             result = process_line(line, pattern, colors, args.verbose, args.replace_all)
             print(result)
-            sys.stdout.flush()
     except KeyboardInterrupt:
         sys.exit(1)
     except BrokenPipeError:
