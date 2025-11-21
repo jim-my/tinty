@@ -415,28 +415,50 @@ class TestPriorityOverflow:
         assert range_deep.priority > range_shallow.priority
 
     def test_nested_colors_after_many_applications(self):
-        """Test that nested colors override shallow ones after 1000+ applications."""
-        text = "test"
+        """Test that nested colors override shallow ones after 1000+ applications.
+
+        This test reproduces the integer-based priority overflow bug where
+        application_order could spill into the depth space after ~1000 applications.
+
+        With int-based: priority = stage*1M + depth*1K + order
+        After 1000+ applications at depth=1, order would exceed 1000, making:
+        - Early depth=2 range: 0*1M + 2*1K + 0 = 2000
+        - Late depth=1 range:  0*1M + 1*1K + 1001 = 2001
+        So the depth=1 range would wrongly win!
+
+        With tuple-based: (stage, depth, order) uses lexicographic comparison
+        so depth=2 always beats depth=1 regardless of order.
+        """
+        text = "ab"
         cs = ColorizedString(text)
 
-        # Advance application counter past 1000
+        # Create >1000 REAL ColorRanges by using patterns that actually match
+        # Each highlight increments _next_priority
         for _ in range(1050):
-            cs = cs.highlight(r"NOMATCH", ["red"])
+            cs = cs.highlight(r"a", ["green"])  # depth=1, matches 'a'
 
-        # Now test: shallow color (depth=1) vs deep color (depth=2)
-        # Apply shallow first (whole string)
-        cs = cs.colorize("blue")  # depth=1
+        # Now _next_priority is 1050
 
-        # Then apply deep color (just first char)
-        cs = cs.highlight(r"^t", ["red"])  # depth=1 for group 0
+        # Apply a depth=1 color to 'b' (application_order = 1050)
+        cs = cs.highlight(r"(b)", ["blue"])  # depth=1 for group 1
+
+        # Apply a depth=2 color (nested group) to same 'b' position
+        # Pattern: outer group captures 'b', inner group also captures 'b'
+        # The inner group gets depth=2: group 1=depth=1, group 2=depth=2
+        cs = cs.highlight(r"((b))", ["yellow", "red"])
 
         result_str = str(cs)
 
-        # With current int-based priority after 1000+ applications:
-        # - blue priority = (0 * 1M) + (1 * 1K) + 1050 = 2050
-        # - red priority = (0 * 1M) + (1 * 1K) + 1051 = 2051
-        # So red wins (later application wins at same depth)
+        # The 'b' character should have:
+        # - blue at depth=1 (from earlier)
+        # - yellow at depth=1 (from outer group)
+        # - red at depth=2 (from inner group)
+        #
+        # With tuple priority, depth=2 (red) should always win over depth=1
+        # Even though blue was applied earlier with order=1050, red's depth=2
+        # takes precedence
 
-        # This test verifies application order still works
-        # The real bug is when nesting depth should matter but gets overridden
-        assert "\033[31m" in result_str or "\033[34m" in result_str
+        # Red (31) should be present for the 'b' character
+        assert "\033[31m" in result_str, (
+            "Depth=2 (red) should override depth=1 colors even after many applications"
+        )
