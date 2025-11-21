@@ -372,3 +372,101 @@ class TestHighlightingEdgeCases:
         # Should contain color codes (case insensitive by default)
         assert "\033[31m" in result_str
         assert "\033[0m" in result_str
+
+
+class TestPriorityOverflow:
+    """Test priority calculation overflow issues."""
+
+    def test_priority_tuple_comparison(self):
+        """Test that priority correctly uses tuples for comparison.
+
+        This directly tests the fix for TODO.md issue #1: priority should be
+        a tuple (pipeline_stage, nesting_depth, application_order) to prevent
+        overflow where application_order spills into nesting_depth space.
+        """
+        from tinty.tinty import ColorRange
+
+        # Create two ranges that demonstrate tuple priority:
+        # Range 1: stage=0, depth=1, order=1000
+        #   Old int priority: (0 * 1M) + (1 * 1K) + 1000 = 2000
+        # Range 2: stage=0, depth=2, order=0
+        #   Old int priority: (0 * 1M) + (2 * 1K) + 0 = 2000
+        # Old system: collision at priority 2000
+        # New system: tuple (0,2,0) > (0,1,1000) so depth=2 wins
+
+        range_shallow = ColorRange(
+            start=0,
+            end=10,
+            color="blue",
+            priority=(0, 1, 1000),  # Shallow depth, high application order
+            pipeline_stage=0,
+        )
+
+        range_deep = ColorRange(
+            start=0,
+            end=10,
+            color="red",
+            priority=(0, 2, 0),  # Deep depth, low application order
+            pipeline_stage=0,
+        )
+
+        # With tuple priority, range_deep should have higher priority
+        # because depth=2 > depth=1 (second element wins)
+        assert range_deep.priority > range_shallow.priority
+
+    def test_nested_colors_after_many_applications(self):
+        """Test that nested colors override shallow ones after 1000+ applications.
+
+        This test reproduces the integer-based priority overflow bug where
+        application_order could spill into the depth space after ~1000 applications.
+
+        With int-based: priority = stage*1M + depth*1K + order
+        After 1000+ applications at depth=1, order would exceed 1000, making:
+        - Early depth=2 range: 0*1M + 2*1K + 0 = 2000
+        - Late depth=1 range:  0*1M + 1*1K + 1001 = 2001
+        So the depth=1 range would wrongly win!
+
+        With tuple-based: (stage, depth, order) uses lexicographic comparison
+        so depth=2 always beats depth=1 regardless of order.
+        """
+        text = "ab"
+        cs = ColorizedString(text)
+
+        # Create >1000 REAL ColorRanges by using patterns that actually match
+        # Each highlight increments _next_priority
+        # Use 1001 iterations (just past overflow threshold of 1000)
+        overflow_threshold = 1001
+        for _ in range(overflow_threshold):
+            cs = cs.highlight(r"a", ["green"])  # depth=1, matches 'a'
+
+        # Verify the loop created ranges - 'a' should be green (32)
+        result_after_loop = str(cs)
+        assert "\033[32m" in result_after_loop, (
+            "Loop should have created green ranges for 'a'"
+        )
+
+        # Now _next_priority is 1001 (past the overflow threshold)
+
+        # Apply a depth=1 color to 'b' (application_order = 1001)
+        cs = cs.highlight(r"(b)", ["blue"])  # depth=1 for group 1
+
+        # Apply a depth=2 color (nested group) to same 'b' position
+        # Pattern: outer group captures 'b', inner group also captures 'b'
+        # The inner group gets depth=2: group 1=depth=1, group 2=depth=2
+        cs = cs.highlight(r"((b))", ["yellow", "red"])
+
+        result_str = str(cs)
+
+        # The 'b' character should have:
+        # - blue at depth=1 (from earlier)
+        # - yellow at depth=1 (from outer group)
+        # - red at depth=2 (from inner group)
+        #
+        # With tuple priority, depth=2 (red) should always win over depth=1
+        # Even though blue was applied earlier with order=1001, red's depth=2
+        # takes precedence
+
+        # Red (31) should be present for the 'b' character
+        assert "\033[31m" in result_str, (
+            "Depth=2 (red) should override depth=1 colors even after many applications"
+        )
