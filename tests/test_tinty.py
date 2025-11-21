@@ -444,3 +444,181 @@ class TestNamedGroupsNestingDepth:
 
         color_code = match.group(1)
         assert color_code == "31"  # Red
+
+    def test_named_groups_inside_alternation(self):
+        """Test that named groups inside alternation get proper depth.
+
+        Pattern: (a|(?P<n>b)) has:
+        - Group 1 (outer): depth=1
+        - Named group 'n' inside alternation: depth=2
+
+        The bug was that BRANCH nodes weren't traversed, so the named group
+        was missing from the depth map entirely.
+        """
+        text = "b"
+        cs = ColorizedString(text)
+
+        # Check the depth calculation directly
+        depth_map = cs._calculate_group_nesting_depth(r"(a|(?P<n>b))")
+
+        # Group 0 is entire match
+        assert 0 in depth_map
+
+        # Group 1 is the outer group containing alternation
+        assert 1 in depth_map
+        assert depth_map[1] == 1
+
+        # Group 2 is the named group (?P<n>...) inside the alternation
+        # This was missing before the fix because BRANCH wasn't traversed
+        assert 2 in depth_map, (
+            f"Named group inside alternation missing from depth map. Got: {depth_map}"
+        )
+        expected_depth = 2
+        actual_depth = depth_map[2]
+        assert actual_depth == expected_depth, (
+            f"Expected depth={expected_depth} for nested group, got {actual_depth}"
+        )
+
+    def test_capture_groups_inside_lookahead(self):
+        """Test that capture groups inside lookahead get proper depth.
+
+        Pattern: (?=(foo)(bar)) has captures inside lookahead.
+        The lookahead itself doesn't capture, but groups inside it do.
+        """
+        text = "foobar"
+        cs = ColorizedString(text)
+
+        # Check the depth calculation directly
+        depth_map = cs._calculate_group_nesting_depth(r"(?=(foo)(bar))")
+
+        # Group 0 is entire match
+        assert 0 in depth_map
+
+        # Groups 1 and 2 are inside the lookahead
+        assert 1 in depth_map, f"Capture inside lookahead missing. Got: {depth_map}"
+        assert 2 in depth_map, f"Capture inside lookahead missing. Got: {depth_map}"
+
+    def test_nested_alternation_with_multiple_captures(self):
+        """Test complex pattern with nested alternations and captures."""
+        text = "abc"
+        cs = ColorizedString(text)
+
+        # Pattern: (a|(b|(?P<c>c)))
+        # Group 1: outer - depth=1
+        # Group 2: middle alternation - depth=2
+        # Group 3 (named 'c'): innermost - depth=3
+        depth_map = cs._calculate_group_nesting_depth(r"(a|(b|(?P<c>c)))")
+
+        assert depth_map.get(1) == 1, f"Outer group wrong depth: {depth_map}"
+        assert depth_map.get(2) == 2, f"Middle group wrong depth: {depth_map}"
+        assert depth_map.get(3) == 3, f"Inner named group wrong depth: {depth_map}"
+
+    def test_lookbehind_with_capture(self):
+        """Test capture groups in lookbehind assertions."""
+        text = "foobar"
+        cs = ColorizedString(text)
+
+        # Lookbehind with capture: (?<=(foo))bar
+        # Note: Python requires fixed-width lookbehinds, so use simple pattern
+        depth_map = cs._calculate_group_nesting_depth(r"(?<=(foo))bar")
+
+        # Group 1 is inside lookbehind
+        assert 1 in depth_map, f"Capture inside lookbehind missing. Got: {depth_map}"
+
+
+class TestPriorityOverflow:
+    """Test priority calculation overflow issues."""
+
+    def test_priority_tuple_comparison(self):
+        """Test that priority correctly uses tuples for comparison.
+
+        This directly tests the fix for TODO.md issue #1: priority should be
+        a tuple (pipeline_stage, nesting_depth, application_order) to prevent
+        overflow where application_order spills into nesting_depth space.
+        """
+        from tinty.tinty import ColorRange
+
+        # Create two ranges that demonstrate tuple priority:
+        # Range 1: stage=0, depth=1, order=1000
+        #   Old int priority: (0 * 1M) + (1 * 1K) + 1000 = 2000
+        # Range 2: stage=0, depth=2, order=0
+        #   Old int priority: (0 * 1M) + (2 * 1K) + 0 = 2000
+        # Old system: collision at priority 2000
+        # New system: tuple (0,2,0) > (0,1,1000) so depth=2 wins
+
+        range_shallow = ColorRange(
+            start=0,
+            end=10,
+            color="blue",
+            priority=(0, 1, 1000),  # Shallow depth, high application order
+            pipeline_stage=0,
+        )
+
+        range_deep = ColorRange(
+            start=0,
+            end=10,
+            color="red",
+            priority=(0, 2, 0),  # Deep depth, low application order
+            pipeline_stage=0,
+        )
+
+        # With tuple priority, range_deep should have higher priority
+        # because depth=2 > depth=1 (second element wins)
+        assert range_deep.priority > range_shallow.priority
+
+    def test_nested_colors_after_many_applications(self):
+        """Test that nested colors override shallow ones after 1000+ applications.
+
+        This test reproduces the integer-based priority overflow bug where
+        application_order could spill into the depth space after ~1000 applications.
+
+        With int-based: priority = stage*1M + depth*1K + order
+        After 1000+ applications at depth=1, order would exceed 1000, making:
+        - Early depth=2 range: 0*1M + 2*1K + 0 = 2000
+        - Late depth=1 range:  0*1M + 1*1K + 1001 = 2001
+        So the depth=1 range would wrongly win!
+
+        With tuple-based: (stage, depth, order) uses lexicographic comparison
+        so depth=2 always beats depth=1 regardless of order.
+        """
+        text = "ab"
+        cs = ColorizedString(text)
+
+        # Create >1000 REAL ColorRanges by using patterns that actually match
+        # Each highlight increments _next_priority
+        # Use 1001 iterations (just past overflow threshold of 1000)
+        overflow_threshold = 1001
+        for _ in range(overflow_threshold):
+            cs = cs.highlight(r"a", ["green"])  # depth=1, matches 'a'
+
+        # Verify the loop created ranges - 'a' should be green (32)
+        result_after_loop = str(cs)
+        assert "\033[32m" in result_after_loop, (
+            "Loop should have created green ranges for 'a'"
+        )
+
+        # Now _next_priority is 1001 (past the overflow threshold)
+
+        # Apply a depth=1 color to 'b' (application_order = 1001)
+        cs = cs.highlight(r"(b)", ["blue"])  # depth=1 for group 1
+
+        # Apply a depth=2 color (nested group) to same 'b' position
+        # Pattern: outer group captures 'b', inner group also captures 'b'
+        # The inner group gets depth=2: group 1=depth=1, group 2=depth=2
+        cs = cs.highlight(r"((b))", ["yellow", "red"])
+
+        result_str = str(cs)
+
+        # The 'b' character should have:
+        # - blue at depth=1 (from earlier)
+        # - yellow at depth=1 (from outer group)
+        # - red at depth=2 (from inner group)
+        #
+        # With tuple priority, depth=2 (red) should always win over depth=1
+        # Even though blue was applied earlier with order=1001, red's depth=2
+        # takes precedence
+
+        # Red (31) should be present for the 'b' character
+        assert "\033[31m" in result_str, (
+            "Depth=2 (red) should override depth=1 colors even after many applications"
+        )

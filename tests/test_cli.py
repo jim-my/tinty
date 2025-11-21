@@ -47,6 +47,14 @@ class TestCreateParser:
         args = parser.parse_args(["pattern", "--case-sensitive"])
         assert args.case_sensitive is True
 
+        # Test unbuffered (short form)
+        args = parser.parse_args(["pattern", "-u"])
+        assert args.unbuffered is True
+
+        # Test unbuffered (long form)
+        args = parser.parse_args(["pattern", "--unbuffered"])
+        assert args.unbuffered is True
+
     def test_parser_no_args(self):
         """Test parser with no arguments."""
         parser = create_parser()
@@ -387,3 +395,52 @@ class TestCLIIntegration:
                         # Should contain replace all message
                         assert "Replace all: True" in stderr_output
                         assert "cleared previous colors" in stderr_output
+
+    def test_cli_unbuffered_flag_calls_reconfigure(self):
+        """Test --unbuffered flag enables line-buffered output via reconfigure."""
+        test_input = "hello\n"
+
+        # Create a mock stdout with reconfigure method
+        mock_stdout = MagicMock()
+        mock_stdout.write = MagicMock()
+
+        with patch("sys.argv", ["tinty", "-u", "l", "red"]):
+            with patch("sys.stdin", io.StringIO(test_input)):
+                with patch("sys.stdout", mock_stdout):
+                    main()
+
+                    # Verify reconfigure was called with line_buffering=True
+                    mock_stdout.reconfigure.assert_called_once_with(line_buffering=True)
+
+    def test_cli_without_unbuffered_no_reconfigure(self):
+        """Test that without --unbuffered, reconfigure is not called."""
+        test_input = "hello\n"
+
+        mock_stdout = MagicMock()
+        mock_stdout.write = MagicMock()
+
+        with patch("sys.argv", ["tinty", "l", "red"]):
+            with patch("sys.stdin", io.StringIO(test_input)):
+                with patch("sys.stdout", mock_stdout):
+                    main()
+
+                    # Verify reconfigure was NOT called
+                    mock_stdout.reconfigure.assert_not_called()
+
+    def test_cli_unbuffered_flag_output(self):
+        """Test --unbuffered flag still produces correct colorized output."""
+        from tinty import ColorizedString
+
+        test_input = "hello world\n"
+
+        with patch("sys.argv", ["tinty", "--unbuffered", "l", "red"]):
+            with patch("sys.stdin", io.StringIO(test_input)):
+                with patch("sys.stdout", io.StringIO()) as mock_stdout:
+                    main()
+
+                    output = mock_stdout.getvalue()
+
+                    # Should colorize 'l' characters
+                    assert "\033[31m" in output
+                    cleaned = ColorizedString(output).remove_color()
+                    assert "hello world" in cleaned

@@ -3,15 +3,18 @@ Core colorization functionality with deferred rendering and proper color nesting
 """
 
 import re
-import sre_parse
+import warnings
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import Any, Optional, Union
+
+# sre_parse is deprecated in Python 3.11+ but no stable public alternative exists.
+# We suppress the warning since this is the only way to properly parse regex AST.
+# Future migration path: consider third-party regex parsing library if needed.
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore", category=DeprecationWarning)
+    import sre_parse
 
 from .color_codes import ColorCode, ColorManager, color_manager
-
-# Priority calculation constants
-PIPELINE_STAGE_MULTIPLIER = 1_000_000
-NESTING_DEPTH_MULTIPLIER = 1_000
 
 # ANSI SGR code constants for extended colors
 ANSI_FG_256_CODE = 38
@@ -26,19 +29,20 @@ ANSI_TRUE_COLOR_LEN = 5  # 38;2;R;G;B
 class ColorRange:
     """Represents a range of text with a specific color applied.
 
-    Priority is calculated as:
-    priority = (pipeline_stage * 1M) + (nesting_depth * 1K) + application_order
+    Priority is a tuple (pipeline_stage, nesting_depth, application_order).
+    Python's lexicographic tuple comparison ensures:
+    - Later pipeline stages override earlier ones (first element)
+    - More nested regex groups override less nested ones (second element)
+    - Later applications override earlier ones at same depth (third element)
 
-    This ensures:
-    - Later pipeline stages override earlier ones
-    - More nested regex groups override less nested ones
-    - Later applications override earlier ones at same depth
+    Using tuples prevents overflow issues where application_order could
+    spill into nesting_depth space with integer-based priority calculation.
     """
 
     start: int  # Position in original text (inclusive)
     end: int  # Position in original text (exclusive)
     color: str  # Color name (e.g., 'red', 'bg_blue', 'bold')
-    priority: int = 0  # Higher priority wins within same channel
+    priority: tuple[int, int, int] = (0, 0, 0)  # (stage, depth, order)
     pipeline_stage: int = 0  # Which pipeline stage this was applied in
 
 
@@ -205,7 +209,7 @@ class ColorizedString(str):
                         start=start_pos,
                         end=pos,
                         color=prev_color,
-                        priority=0,
+                        priority=(0, 0, 0),
                         pipeline_stage=0,
                     )
                 )
@@ -261,7 +265,11 @@ class ColorizedString(str):
                                     start=start_pos,
                                     end=pos,
                                     color=color_name,
-                                    priority=0,  # Parsed from input, pipeline_stage=0
+                                    priority=(
+                                        0,
+                                        0,
+                                        0,
+                                    ),  # Parsed from input, pipeline_stage=0
                                     pipeline_stage=0,
                                 )
                             )
@@ -307,7 +315,7 @@ class ColorizedString(str):
                         start=start_pos,
                         end=pos,
                         color=color_name,
-                        priority=0,
+                        priority=(0, 0, 0),
                         pipeline_stage=0,
                     )
                 )
@@ -469,10 +477,11 @@ class ColorizedString(str):
         color_name = self._normalize_color_name(color_name)
 
         # Create new ColorRange for entire text
+        # Priority tuple: (pipeline_stage, nesting_depth, application_order)
         priority = (
-            self._pipeline_stage * PIPELINE_STAGE_MULTIPLIER
-            + NESTING_DEPTH_MULTIPLIER  # depth=1 for whole-string colorization
-            + self._next_priority
+            self._pipeline_stage,
+            1,  # depth=1 for whole-string colorization
+            self._next_priority,
         )
 
         new_range = ColorRange(
@@ -533,64 +542,90 @@ class ColorizedString(str):
                 if hasattr(parsed_pattern, "data")
                 else parsed_pattern
             )
-        except Exception:
-            # If parsing fails, fall back to simple depth tracking
+        except (re.error, ValueError, TypeError, AttributeError):
+            # If parsing fails due to invalid regex or unexpected structure,
+            # fall back to simple depth tracking (group 0 only)
             return depth_map
 
         # Constants for sre_parse structure
         OP_AV_TUPLE_LEN = 2  # Each parsed item is (op, av) tuple
+        BRANCH_AV_TUPLE_LEN = 2  # BRANCH av: (None, [branches])
+        ASSERT_AV_TUPLE_LEN = 2  # ASSERT av: (direction, content)
         SUBPATTERN_TUPLE_LEN_FULL = (
             4  # Full structure: (group_num, add_flags, del_flags, content)
         )
         SUBPATTERN_TUPLE_LEN_MIN = 2  # Minimum: (group_num, content)
 
-        def traverse(items, current_depth: int) -> None:
+        def extract_data(obj: Any) -> Any:
+            """Extract data attribute from SubPattern object if present."""
+            return obj.data if hasattr(obj, "data") else obj
+
+        def handle_subpattern(av: Any, current_depth: int) -> None:
+            """Handle SUBPATTERN node."""
+            if not isinstance(av, tuple):
+                return
+
+            # Handle different tuple structures (Python version dependent)
+            if len(av) >= SUBPATTERN_TUPLE_LEN_FULL:
+                group_num = av[0]
+                parsed_content = av[3]
+            elif len(av) >= SUBPATTERN_TUPLE_LEN_MIN:
+                group_num = av[0]
+                parsed_content = av[1] if isinstance(av[1], list) else av[-1]
+            else:
+                return
+
+            parsed_content = extract_data(parsed_content)
+
+            if group_num is not None:
+                # Capturing group (includes named groups)
+                depth_map[group_num] = current_depth + 1
+                if isinstance(parsed_content, list):
+                    traverse(parsed_content, current_depth + 1)
+            elif isinstance(parsed_content, list):
+                # Non-capturing group - maintain depth for nested groups
+                traverse(parsed_content, current_depth + 1)
+
+        def handle_branch(av: Any, current_depth: int) -> None:
+            """Handle BRANCH node (alternation |)."""
+            if not isinstance(av, tuple) or len(av) < BRANCH_AV_TUPLE_LEN:
+                return
+            branches = av[1]
+            if not isinstance(branches, list):
+                return
+            for branch_item in branches:
+                branch_data = extract_data(branch_item)
+                if isinstance(branch_data, list):
+                    traverse(branch_data, current_depth)
+
+        def handle_assert(av: Any, current_depth: int) -> None:
+            """Handle ASSERT/ASSERT_NOT node (lookahead/behind)."""
+            if not isinstance(av, tuple) or len(av) < ASSERT_AV_TUPLE_LEN:
+                return
+            parsed_content = extract_data(av[1])
+            if isinstance(parsed_content, list):
+                traverse(parsed_content, current_depth)
+
+        def traverse(items: Any, current_depth: int) -> None:
             """Recursively traverse the regex AST to calculate nesting depths."""
-            # items can be a list of (op, av) tuples or other structures
             if not isinstance(items, list):
                 return
 
             for item in items:
-                # Each item should be a tuple of (op, av)
                 if not isinstance(item, tuple) or len(item) != OP_AV_TUPLE_LEN:
                     continue
 
                 op, av = item
 
                 if op == sre_parse.SUBPATTERN:
-                    # av structure: (group_num, add_flags, del_flags, parsed_content)
-                    if not isinstance(av, tuple):
-                        continue
-
-                    # Handle different tuple structures (Python version dependent)
-                    if len(av) >= SUBPATTERN_TUPLE_LEN_FULL:
-                        group_num = av[0]
-                        parsed_content = av[3]
-                    elif len(av) >= SUBPATTERN_TUPLE_LEN_MIN:
-                        group_num = av[0]
-                        parsed_content = av[1] if isinstance(av[1], list) else av[-1]
-                    else:
-                        continue
-
-                    # Extract data attribute if it's a SubPattern object
-                    if hasattr(parsed_content, "data"):
-                        parsed_content = parsed_content.data
-
-                    if group_num is not None:
-                        # This is a capturing group (includes named groups)
-                        # Group numbers start at 1
-                        depth_map[group_num] = current_depth + 1
-                        # Recurse into the subpattern with increased depth
-                        if isinstance(parsed_content, list):
-                            traverse(parsed_content, current_depth + 1)
-                    # Non-capturing group, lookahead, lookbehind, etc.
-                    # Don't increment group number, but maintain depth for nested groups
-                    elif isinstance(parsed_content, list):
-                        traverse(parsed_content, current_depth + 1)
-                # For other operations, check if av contains nested structures
+                    handle_subpattern(av, current_depth)
+                elif op == sre_parse.BRANCH:
+                    handle_branch(av, current_depth)
+                elif op in {sre_parse.ASSERT, sre_parse.ASSERT_NOT}:
+                    handle_assert(av, current_depth)
+                # Note: ATOMIC_GROUP (?>...) in Python 3.11+ is handled by
+                # the isinstance(av, list) fallback since it doesn't capture
                 elif isinstance(av, list):
-                    # Recurse into list structures at same depth
-                    # (these are not grouping constructs)
                     traverse(av, current_depth)
 
         traverse(items_to_traverse, 0)
@@ -659,10 +694,11 @@ class ColorizedString(str):
                 # For group 0 (entire match with no groups), use depth 1
                 nesting_depth = 1 if grp == 0 else nesting_depths.get(grp, 1)
 
+                # Priority tuple: (pipeline_stage, nesting_depth, application_order)
                 priority = (
-                    self._pipeline_stage * PIPELINE_STAGE_MULTIPLIER
-                    + nesting_depth * NESTING_DEPTH_MULTIPLIER
-                    + self._next_priority
+                    self._pipeline_stage,
+                    nesting_depth,
+                    self._next_priority,
                 )
 
                 # Create range
@@ -709,10 +745,11 @@ class ColorizedString(str):
         for pos in sorted(set(positions)):
             if 0 <= pos < len(self._original_text):
                 # Calculate priority
+                # Priority tuple: (pipeline_stage, nesting_depth, application_order)
                 priority = (
-                    self._pipeline_stage * PIPELINE_STAGE_MULTIPLIER
-                    + 2 * NESTING_DEPTH_MULTIPLIER  # depth=2 for individual chars
-                    + self._next_priority
+                    self._pipeline_stage,
+                    2,  # depth=2 for individual chars
+                    self._next_priority,
                 )
 
                 # Create range for single character
