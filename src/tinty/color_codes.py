@@ -80,10 +80,23 @@ class ColorManager:
             name = color_code.name.lower()
             color_map[name] = color_code
 
-            # Add aliases without fg_ prefix
+            # Add aliases without fg_ prefix (e.g., 'red' for 'fg_red')
             if name.startswith("fg_"):
                 alias = name[3:]  # Remove 'fg_' prefix
                 color_map[alias] = color_code
+
+            # Add color_bg aliases for bg_color format (e.g., 'red_bg' for 'bg_red')
+            if name.startswith("bg_"):
+                color_part = name[3:]  # Remove 'bg_' prefix
+                alias = f"{color_part}_bg"  # Create 'red_bg' format
+                color_map[alias] = color_code
+
+        # Add common attribute aliases
+        color_map["bold"] = ColorCode.BRIGHT
+        color_map["inverse"] = ColorCode.INVERT
+        color_map["reverse"] = ColorCode.INVERT
+        color_map["swap"] = ColorCode.SWAPCOLOR
+        color_map["strike"] = ColorCode.STRIKETHROUGH
 
         return color_map
 
