@@ -58,6 +58,14 @@ Examples:
         help="Clear all previous colors before applying new ones (useful in pipelines)",
     )
 
+    parser.add_argument(
+        "-u",
+        "--unbuffered",
+        action="store_true",
+        help="Force line-buffered output (flush after each line). "
+        "Useful for real-time log streaming without external tools like stdbuf.",
+    )
+
     return parser
 
 
