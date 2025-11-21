@@ -35,6 +35,7 @@ from .colors import *  # noqa: F403
 
 # Export enhanced API as primary interface
 from .colors import __all__ as _colors_all
+from .core import Colorize, ColorizedString, colorize
 from .enhanced import (
     C,
     ColorContext,
@@ -42,7 +43,6 @@ from .enhanced import (
     colored,
     txt,
 )
-from .tinty import Colorize, ColorizedString, colorize
 
 __all__ = [
     "C",

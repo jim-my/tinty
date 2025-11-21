@@ -22,9 +22,9 @@ EXAMPLES = {
     },
     "cli_examples": {
         "bash_lines": [
-            'echo "hello world" | tinty "l.*" yellow',
+            'echo "hello world" | pipetint "l.*" yellow',
             "",
-            'echo "hello world" | tinty "(ll).*(ld)" red,bg_blue blue,bg_red',
+            'echo "hello world" | pipetint "(ll).*(ld)" red,bg_blue blue,bg_red',
         ],
         "readme_description": "CLI pattern highlighting:",
         "readme_subset": [0, 2],  # Show only the second line in README

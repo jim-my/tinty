@@ -217,7 +217,7 @@ ignore = [
     "PLR6301", # Method could be static (keeping as instance methods for consistency)
     "PLR6201", # Use set literal (tuple is intentional for readability)
 ]
-"src/pipetint/tinty.py" = [
+"src/pipetint/core.py" = [
     "PLR0912", # Too many branches (complex highlighting logic)
     "ARG002",  # Unused argument (value in __init__)
     "PERF401", # List comprehension suggestion (readability over perf)

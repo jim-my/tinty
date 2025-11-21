@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Demo script showing tinty library functionality.
+Demo script showing pipetint library functionality.
 """
 
 from pipetint import (

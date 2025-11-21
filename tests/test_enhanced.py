@@ -360,7 +360,7 @@ class TestBackwardCompatibility:
     def test_can_import_legacy_api(self):
         """Test that legacy API still works."""
         from pipetint import Colorize, ColorizedString
-        from pipetint.tinty import colorize  # Import the function directly
+        from pipetint.core import colorize  # Import the function directly
 
         # Test legacy colorizer
         colorizer = Colorize()
@@ -378,7 +378,7 @@ class TestBackwardCompatibility:
 
     def test_legacy_and_enhanced_interop(self):
         """Test that legacy and enhanced APIs can work together."""
-        from pipetint.tinty import colorize
+        from pipetint.core import colorize
 
         # Use legacy function result with enhanced API
         legacy_result = colorize.colorize("hello", "red")

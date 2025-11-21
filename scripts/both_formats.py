@@ -22,9 +22,9 @@ print(f"Are they identical? {str(result1) == str(result2)}")
 print("✅ Both formats produce the same ANSI output!\n")
 
 # Example 2: Multiple backgrounds
-text3 = ColorizedString("tinty supports both formats!")
+text3 = ColorizedString("pipetint supports both formats!")
 result3 = text3.highlight(
-    r"(tinty)(supports)(both)", ["bg_blue", "green_bg", "bg_yellow"]
+    r"(pipetint)(supports)(both)", ["bg_blue", "green_bg", "bg_yellow"]
 )
 print(f"Mixed formats:    {result3}")
 print("                  bg_blue, green_bg, bg_yellow")

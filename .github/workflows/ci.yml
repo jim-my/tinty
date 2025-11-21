@@ -32,7 +32,7 @@ jobs:
 
     - name: Run tests with pytest
       run: |
-        pytest --cov=tinty --cov-report=term-missing
+        pytest --cov=pipetint --cov-report=term-missing
 
   lint:
     runs-on: ubuntu-latest

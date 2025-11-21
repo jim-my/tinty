@@ -13,7 +13,7 @@ from typing import Callable, Optional, Union
 
 from .color_codes import ColorCode, ColorManager, color_manager
 from .colors import ColorType
-from .tinty import Colorize, ColorizedString, colorize
+from .core import Colorize, ColorizedString, colorize
 
 
 class ColorString(str):  # noqa: PLR0904
