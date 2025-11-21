@@ -372,3 +372,75 @@ class TestHighlightingEdgeCases:
         # Should contain color codes (case insensitive by default)
         assert "\033[31m" in result_str
         assert "\033[0m" in result_str
+
+
+class TestNamedGroupsNestingDepth:
+    """Test nesting depth calculation for named groups and lookarounds."""
+
+    def test_named_groups_get_proper_depth(self):
+        """Test that named capturing groups get proper nesting depth.
+
+        This test demonstrates TODO.md issue #2: _calculate_group_nesting_depth
+        treats (?P<name>...) as non-capturing, but it actually creates a
+        capture group that should have proper depth tracking.
+        """
+        # Pattern with outer regular group and inner named group
+        # (outer (?P<inner>text))
+        # Expected: inner named group should have depth=2, outer has depth=1
+        text = "outer inner"
+        cs = ColorizedString(text)
+
+        # Apply nested pattern: outer group blue, inner named group red
+        # If bug exists: inner might not get depth=2, so blue might win
+        result = cs.highlight(r"(outer ((?P<word>\w+)))", ["blue", "green", "red"])
+        result_str = str(result)
+
+        # "inner" should be red (depth=3 for innermost group)
+        # If bug exists, it might be blue or green
+        import re
+
+        match = re.search(r"\033\[(\d+)m(inner)", result_str)
+        assert match is not None, "Could not find colored 'inner' in output"
+
+        color_code = match.group(1)
+        assert color_code == "31", (  # Red is color code 31
+            f"Expected 'inner' to be red (31) due to deepest nesting, "
+            f"but got color code {color_code}. "
+            f"Named groups may not be getting proper nesting depth."
+        )
+
+    def test_lookahead_does_not_create_capture_group(self):
+        """Test that lookahead assertions don't create capture groups."""
+        # Pattern with lookahead: (foo)(?=bar)
+        # The lookahead (?=bar) should NOT increment group number
+        text = "foobar"
+        cs = ColorizedString(text)
+
+        # Color the first (and only) capture group
+        result = cs.highlight(r"(foo)(?=bar)", ["red"])
+        result_str = str(result)
+
+        # "foo" should be red
+        assert "\033[31m" in result_str
+        assert "foo" in result_str
+
+    def test_complex_named_groups_with_non_capturing(self):
+        """Test complex pattern with mix of named, non-capturing, and regular groups."""
+        # Pattern: (outer (?:non-cap (?P<named>inner)))
+        # Group 1: outer ... (depth=1)
+        # No group for (?:...) - non-capturing
+        # Group 2: named group (depth=3, nested inside non-capturing and outer)
+        text = "outer non-cap inner"
+        cs = ColorizedString(text)
+
+        result = cs.highlight(r"(outer (?:non-cap )(?P<named>inner))", ["blue", "red"])
+        result_str = str(result)
+
+        # "inner" should be red (group 2, highest depth)
+        import re
+
+        match = re.search(r"\033\[(\d+)m(inner)", result_str)
+        assert match is not None
+
+        color_code = match.group(1)
+        assert color_code == "31"  # Red

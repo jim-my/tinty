@@ -3,6 +3,7 @@ Core colorization functionality with deferred rendering and proper color nesting
 """
 
 import re
+import sre_parse
 from dataclasses import dataclass
 from typing import Optional, Union
 
@@ -516,51 +517,83 @@ class ColorizedString(str):
     ) -> dict[int, int]:
         """Calculate nesting depth for each capture group in a regex pattern.
 
+        Uses sre_parse to properly identify capturing groups (including named groups)
+        vs non-capturing groups, lookaheads, lookbehinds, etc.
+
         Returns a dict mapping group number to nesting depth.
         Group 0 (entire match) has depth 0, first-level groups have depth 1, etc.
         """
         depth_map = {0: 0}  # Group 0 is the entire match
-        current_depth = 0
-        group_num = 0
-        i = 0
 
-        while i < len(pattern_str):
-            char = pattern_str[i]
+        try:
+            parsed_pattern = sre_parse.parse(pattern_str)
+            # sre_parse.parse returns a SubPattern object with a .data attribute
+            items_to_traverse = (
+                parsed_pattern.data
+                if hasattr(parsed_pattern, "data")
+                else parsed_pattern
+            )
+        except Exception:
+            # If parsing fails, fall back to simple depth tracking
+            return depth_map
 
-            # Skip escaped characters
-            if char == "\\" and i + 1 < len(pattern_str):
-                i += 2
-                continue
+        # Constants for sre_parse structure
+        OP_AV_TUPLE_LEN = 2  # Each parsed item is (op, av) tuple
+        SUBPATTERN_TUPLE_LEN_FULL = (
+            4  # Full structure: (group_num, add_flags, del_flags, content)
+        )
+        SUBPATTERN_TUPLE_LEN_MIN = 2  # Minimum: (group_num, content)
 
-            # Skip character classes
-            if char == "[":
-                i += 1
-                while i < len(pattern_str) and pattern_str[i] != "]":
-                    if pattern_str[i] == "\\" and i + 1 < len(pattern_str):
-                        i += 2
+        def traverse(items, current_depth: int) -> None:
+            """Recursively traverse the regex AST to calculate nesting depths."""
+            # items can be a list of (op, av) tuples or other structures
+            if not isinstance(items, list):
+                return
+
+            for item in items:
+                # Each item should be a tuple of (op, av)
+                if not isinstance(item, tuple) or len(item) != OP_AV_TUPLE_LEN:
+                    continue
+
+                op, av = item
+
+                if op == sre_parse.SUBPATTERN:
+                    # av structure: (group_num, add_flags, del_flags, parsed_content)
+                    if not isinstance(av, tuple):
+                        continue
+
+                    # Handle different tuple structures (Python version dependent)
+                    if len(av) >= SUBPATTERN_TUPLE_LEN_FULL:
+                        group_num = av[0]
+                        parsed_content = av[3]
+                    elif len(av) >= SUBPATTERN_TUPLE_LEN_MIN:
+                        group_num = av[0]
+                        parsed_content = av[1] if isinstance(av[1], list) else av[-1]
                     else:
-                        i += 1
-                i += 1
-                continue
+                        continue
 
-            # Handle opening parenthesis
-            if char == "(":
-                # Check if it's a non-capturing group
-                if i + 1 < len(pattern_str) and pattern_str[i + 1] == "?":
-                    # Non-capturing group, don't increment group_num
-                    # But still increase depth for nested groups
-                    current_depth += 1
-                else:
-                    # Capturing group
-                    current_depth += 1
-                    group_num += 1
-                    depth_map[group_num] = current_depth
+                    # Extract data attribute if it's a SubPattern object
+                    if hasattr(parsed_content, "data"):
+                        parsed_content = parsed_content.data
 
-            elif char == ")":
-                current_depth -= 1
+                    if group_num is not None:
+                        # This is a capturing group (includes named groups)
+                        # Group numbers start at 1
+                        depth_map[group_num] = current_depth + 1
+                        # Recurse into the subpattern with increased depth
+                        if isinstance(parsed_content, list):
+                            traverse(parsed_content, current_depth + 1)
+                    # Non-capturing group, lookahead, lookbehind, etc.
+                    # Don't increment group number, but maintain depth for nested groups
+                    elif isinstance(parsed_content, list):
+                        traverse(parsed_content, current_depth + 1)
+                # For other operations, check if av contains nested structures
+                elif isinstance(av, list):
+                    # Recurse into list structures at same depth
+                    # (these are not grouping constructs)
+                    traverse(av, current_depth)
 
-            i += 1
-
+        traverse(items_to_traverse, 0)
         return depth_map
 
     def highlight(
