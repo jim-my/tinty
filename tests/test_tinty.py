@@ -327,6 +327,38 @@ class TestColorizedString:
         assert "\x1b[38;5;123m" in bg_str  # Foreground preserved
 
 
+class TestRawAnsiPassthrough:
+    """Tests for preserving unknown ANSI sequences."""
+
+    def test_preserve_unknown_sgr_sequence(self):
+        """Unknown SGR codes should be preserved when rendering."""
+        text = "\x1b[58;5;200mHello\x1b[0m"
+        cs = ColorizedString(text)
+
+        rendered = str(cs)
+        assert "\x1b[58;5;200m" in rendered
+        assert rendered.endswith("\x1b[0m")
+
+    def test_highlight_preserves_unknown_sequence(self):
+        """Highlighting should keep existing unknown SGR codes."""
+        text = "\x1b[58;5;200mHello\x1b[0m"
+        cs = ColorizedString(text)
+
+        result = cs.highlight(r"Hello", ["red"])
+        result_str = str(result)
+
+        assert "\x1b[31m" in result_str
+        assert "\x1b[58;5;200m" in result_str
+        assert result_str.index("\x1b[31m") < result_str.index("\x1b[58;5;200m")
+
+    def test_unknown_sequence_without_colors(self):
+        """Strings containing only unknown sequences should remain unchanged."""
+        text = "\x1b[999mPlain\x1b[0m"
+        cs = ColorizedString(text)
+
+        assert str(cs) == text
+
+
 class TestHighlightingEdgeCases:
     """Test edge cases for highlighting functionality."""
 
