@@ -2,6 +2,7 @@
 
 import argparse
 import contextlib
+import html
 import re
 import sys
 
@@ -11,7 +12,8 @@ from .core import Colorize, ColorizedString
 def ansi_to_html(text: str) -> str:
     """Convert ANSI color codes to HTML with inline styles.
 
-    Simple implementation that converts common ANSI codes to HTML spans.
+    Properly handles reset codes and multiple colored segments.
+    Escapes HTML special characters to prevent XSS vulnerabilities.
 
     Args:
         text: Text with ANSI color codes
@@ -57,25 +59,46 @@ def ansi_to_html(text: str) -> str:
         "4": "text-decoration:underline",
     }
 
-    # Collect all styles from ANSI codes
-    styles: list[str] = []
+    # Parse ANSI codes and convert to HTML spans
+    result: list[str] = []
+    current_styles: list[str] = []
+    pos = 0
+
     for match in re.finditer(r"\x1b\[([0-9;]+)m", text):
+        # Add any text before this escape code
+        if match.start() > pos:
+            plain_text = text[pos : match.start()]
+            escaped_text = html.escape(plain_text)
+            if current_styles:
+                result.append(
+                    f'<span style="{";".join(current_styles)}">{escaped_text}</span>'
+                )
+            else:
+                result.append(escaped_text)
+
+        # Parse escape code and update styles
         codes = match.group(1).split(";")
         if "0" in codes:  # Reset
-            styles = []
+            current_styles = []
         else:
             for code in codes:
                 if code in color_map:
-                    styles.append(color_map[code])
+                    current_styles.append(color_map[code])
 
-    # For now, wrap the entire text if it has colors
-    if styles:
-        # Remove ANSI codes first
-        clean = re.sub(r"\x1b\[[0-9;]+m", "", text)
-        return f'<span style="{";".join(styles)}">{clean}</span>'
+        pos = match.end()
 
-    # No styles, just remove ANSI codes
-    return re.sub(r"\x1b\[[0-9;]+m", "", text)
+    # Add any remaining text after the last escape code
+    if pos < len(text):
+        plain_text = text[pos:]
+        escaped_text = html.escape(plain_text)
+        if current_styles:
+            result.append(
+                f'<span style="{";".join(current_styles)}">{escaped_text}</span>'
+            )
+        else:
+            result.append(escaped_text)
+
+    return "".join(result)
 
 
 def _create_help_examples() -> str:
