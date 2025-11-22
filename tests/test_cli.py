@@ -77,12 +77,19 @@ class TestListColors:
 
         output = captured_output.getvalue()
 
-        # Should contain expected sections
-        assert "Available colors:" in output
+        # Should contain expected sections (new formatted output)
+        assert "Available Colors" in output
+        assert "Foreground Colors" in output
+        assert "Background Colors" in output
+        assert "Text Styles" in output
 
-        # Should contain some specific colors with their values
-        assert "fg_red: 31" in output
-        assert "bg_blue: 44" in output
+        # Should contain some specific colors (new format: "This is red")
+        assert "This is red" in output
+        assert "This is bg_blue" in output
+        assert "This is bold" in output
+
+        # Should have usage hint
+        assert "Usage: pipetint" in output
 
 
 class TestProcessLine:
