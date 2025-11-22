@@ -6,7 +6,11 @@ default:
     @just --list
 
 # Development setup
-# Development setup with Poetry
+# Install package only (no dev dependencies)
+install:
+    poetry install
+
+# Full development setup with Poetry
 setup-poetry:
     poetry install --with dev
     poetry run pre-commit install
@@ -59,15 +63,15 @@ build-check: build-poetry
 
 
 # Run example scripts
-example script="quickstart":
+example script="quickstart": install
     poetry run python examples/{{script}}.py
 
 # Run CLI help
-cli-help:
+cli-help: install
     poetry run pipetint --help
 
 # Test CLI functionality
-cli-test:
+cli-test: install
     echo "hello world" | poetry run pipetint 'l' red
 
 # Create a new release (requires version bump)
@@ -89,12 +93,12 @@ info:
     @echo "Location: $(poetry run python -c 'import pipetint; print(pipetint.__file__)' 2>/dev/null || echo 'not found')"
 
 # Show available colors demo
-demo:
+demo: install
     poetry run python -c "from pipetint import C, RED, GREEN, BLUE, BOLD; print(C('✅ Tinty works!') | GREEN | BOLD)"
 
 
 # Generate screenshots for README (syncs examples, creates scripts, captures images)
-screenshots:
+screenshots: install
     @echo "📸 Generating terminal screenshots for README..."
     @echo "🔄 Syncing examples between README and scripts..."
     @mkdir -p docs/images scripts

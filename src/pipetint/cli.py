@@ -8,19 +8,78 @@ import sys
 from .core import Colorize, ColorizedString
 
 
+def _create_help_examples() -> str:
+    """Create colorized examples for CLI help."""
+    # Example 1: Simple highlighting
+    ex1 = ColorizedString("ERROR: Connection failed").highlight(r"ERROR", ["red"])
+
+    # Example 2: Success highlighting
+    ex2 = ColorizedString("SUCCESS: Task completed").highlight(r"SUCCESS", ["green"])
+
+    # Example 3: Nested groups showing priority
+    ex3 = ColorizedString("hello world").highlight(r"(h.(ll))", ["red", "blue"])
+
+    # Example 4: Background colors
+    ex4_tmp = ColorizedString("WARN: Check logs").highlight(r"WARN", ["black"])
+    ex4 = ex4_tmp.highlight(r"WARN", ["bg_yellow"])
+
+    # Example 5: Multiple capture groups (log parsing)
+    ex5 = ColorizedString(
+        "2024-01-15 ERROR: Connection timeout at server.py:42"
+    ).highlight(
+        r"(\d{4}-\d{2}-\d{2}).*?(ERROR|WARN|INFO).*?([a-z_]+\.py:\d+)",
+        ["cyan", "red", "yellow"],
+    )
+
+    # Example 6: Pipeline composition
+    ex6_tmp1 = ColorizedString("ERROR: Connection failed at 10:30:45").highlight(
+        r"ERROR", ["red"]
+    )
+    ex6_tmp2 = ex6_tmp1.highlight(r"ERROR", ["bold"])
+    ex6 = ex6_tmp2.highlight(r"\d{2}:\d{2}:\d{2}", ["blue"])
+
+    return f"""
+Examples:
+  # Highlight errors in red
+  $ echo "ERROR: Connection failed" | pipetint 'ERROR' red
+  {ex1}
+
+  # Highlight success in green
+  $ echo "SUCCESS: Task completed" | pipetint 'SUCCESS' green
+  {ex2}
+
+  # Nested groups - inner color wins
+  $ echo "hello world" | pipetint '(h.(ll))' red,blue
+  {ex3}
+
+  # Background + foreground
+  $ echo "WARN: Check logs" | pipetint 'WARN' black,bg_yellow
+  {ex4}
+
+  # Multiple patterns - log parsing with 3 groups (date, level, location)
+  $ echo "2024-01-15 ERROR: Connection timeout at server.py:42" | \\
+      pipetint '(\\d{{4}}-\\d{{2}}-\\d{{2}}).*?(ERROR|WARN|INFO).*?([a-z_]+\\.py:\\d+)' \\
+      cyan red yellow
+  {ex5}
+
+  # Pipeline composition - colors preserved across stages
+  $ echo "ERROR: Connection failed at 10:30:45" | \\
+      pipetint 'ERROR' red,bold | \\
+      pipetint '\\d{{2}}:\\d{{2}}:\\d{{2}}' blue
+  {ex6}
+
+  # List all available colors
+  $ pipetint --list-colors
+        """
+
+
 def create_parser() -> argparse.ArgumentParser:
     """Create argument parser for CLI."""
     parser = argparse.ArgumentParser(
         description="Colorize text from stdin using ANSI color codes",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         usage="echo 'text' | pipetint [PATTERN] [COLORS...]\n       pipetint --list-colors",
-        epilog="""
-Examples:
-  echo "hello world" | pipetint 'l.*' yellow
-  echo "hello world" | pipetint '(ll).*(ld)' red,bg_blue blue,bg_red
-  echo "hello world" | pipetint '(l).*(ld)' red bg_red
-  pipetint --list-colors
-        """,
+        epilog=_create_help_examples(),
     )
 
     parser.add_argument(
@@ -72,14 +131,89 @@ Examples:
 
 
 def list_colors():
-    """List all available colors."""
+    """List all available colors with visual demonstrations."""
     colorizer = Colorize()
 
-    print("Available colors:")
+    # Header
+    header = ColorizedString("Available Colors").colorize("bold")
+    print(header)
+    print("=" * 60)
     print()
+
     color_map = colorizer._color_manager._color_map
-    for name, code in sorted(color_map.items()):
-        print(f"  {name}: {code.value}")
+
+    # Group colors by type (only user-facing ones)
+    foreground = []
+    background = []
+    styles = []
+
+    # Define text style names as a set for efficient lookup
+    text_styles = {
+        "bold",
+        "bright",
+        "dim",
+        "underline",
+        "blink",
+        "invert",
+        "swapcolor",
+        "hidden",
+        "strikethrough",
+    }
+
+    for name in sorted(color_map.keys()):
+        # Skip internal color names (fg_, bg_ prefixed duplicates)
+        if name.startswith("fg_") or name.endswith("_bg"):
+            continue
+
+        if name.startswith("bg_"):
+            background.append(name)
+        elif name in text_styles:
+            styles.append(name)
+        else:
+            foreground.append(name)
+
+    # Display foreground colors with color blocks
+    if foreground:
+        section_title = ColorizedString("Foreground Colors").colorize("bold")
+        print(section_title)
+        print("-" * 60)
+        for name in foreground:
+            # Show colored block and the text "This is <color>"
+            block = ColorizedString("████").colorize(name)
+            demo_text = ColorizedString(f"This is {name}").colorize(name)
+            print(f"  {block}  {demo_text}")
+        print()
+
+    # Display background colors with colored blocks
+    if background:
+        section_title = ColorizedString("Background Colors").colorize("bold")
+        print(section_title)
+        print("-" * 60)
+        for name in background:
+            # Show background colored block with black text
+            block_tmp = ColorizedString("████").colorize(name)
+            block = block_tmp.colorize("black")
+            # Show text with background
+            demo_tmp = ColorizedString(f"This is {name}").colorize(name)
+            demo_text = demo_tmp.colorize("black")
+            print(f"  {block}  {demo_text}")
+        print()
+
+    # Display text styles
+    if styles:
+        section_title = ColorizedString("Text Styles").colorize("bold")
+        print(section_title)
+        print("-" * 60)
+        for name in styles:
+            # Show the style applied to sample text
+            demo = ColorizedString(f"This is {name}").colorize(name)
+            print(f"  {demo}")
+        print()
+
+    # Footer with usage hint
+    print("=" * 60)
+    hint = ColorizedString("Usage: pipetint 'pattern' <color>").colorize("dim")
+    print(hint)
 
 
 def process_line(
