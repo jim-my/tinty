@@ -68,7 +68,7 @@ def ansi_to_html(text: str) -> str:
         # Add any text before this escape code
         if match.start() > pos:
             plain_text = text[pos : match.start()]
-            escaped_text = html.escape(plain_text)
+            escaped_text = html.escape(plain_text).replace("\n", "<br>")
             if current_styles:
                 result.append(
                     f'<span style="{";".join(current_styles)}">{escaped_text}</span>'
@@ -90,7 +90,7 @@ def ansi_to_html(text: str) -> str:
     # Add any remaining text after the last escape code
     if pos < len(text):
         plain_text = text[pos:]
-        escaped_text = html.escape(plain_text)
+        escaped_text = html.escape(plain_text).replace("\n", "<br>")
         if current_styles:
             result.append(
                 f'<span style="{";".join(current_styles)}">{escaped_text}</span>'
@@ -435,6 +435,15 @@ def handle_color_removal():
         sys.exit(0)
 
 
+def _print_result(result: str, output_format: str) -> None:
+    """Print processed line respecting the desired output format."""
+    if output_format == "html":
+        rendered = ansi_to_html(result)
+        print(f"{rendered}<br>")
+    else:
+        print(result)
+
+
 def main():
     """Main CLI entry point."""
     parser = create_parser()
@@ -487,11 +496,7 @@ def main():
                 line, pattern, color_groups, args.verbose, args.replace_all
             )
 
-            # Apply output format
-            if args.output_format == "html":
-                result = ansi_to_html(result)
-
-            print(result)
+            _print_result(result, args.output_format)
     except KeyboardInterrupt:
         sys.exit(1)
     except BrokenPipeError:

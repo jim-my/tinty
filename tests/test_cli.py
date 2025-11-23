@@ -175,6 +175,48 @@ class TestMain:
                     main()
                     mock_parser_instance.print_help.assert_called_once()
 
+    def test_remove_color_flag_strips_input(self):
+        """Test --remove-color flag strips ANSI codes from stdin."""
+        test_input = "\x1b[31mERROR\x1b[0m occurred\n"
+
+        with patch("sys.argv", ["pipetint", "--remove-color"]):
+            with patch("sys.stdin", io.StringIO(test_input)):
+                with patch("sys.stdout", io.StringIO()) as mock_stdout:
+                    main()
+
+                    output = mock_stdout.getvalue()
+                    assert output.strip() == "ERROR occurred"
+                    assert "\x1b[" not in output
+
+    def test_output_format_plain_matches_remove_color(self):
+        """Test --output-format=plain produces ANSI-free text."""
+        test_input = "\x1b[32mOK\x1b[0m\n"
+
+        with patch("sys.argv", ["pipetint", "--output-format=plain"]):
+            with patch("sys.stdin", io.StringIO(test_input)):
+                with patch("sys.stdout", io.StringIO()) as mock_stdout:
+                    main()
+
+                    output = mock_stdout.getvalue()
+                    assert output.strip() == "OK"
+                    assert "\x1b[" not in output
+
+    def test_output_format_html_converts_ansi(self):
+        """Test --output-format=html converts ANSI codes to HTML spans."""
+        test_input = "ERROR at 10:00\n"
+
+        with patch("sys.argv", ["pipetint", "ERROR", "red", "--output-format=html"]):
+            with patch("sys.stdin", io.StringIO(test_input)):
+                with patch("sys.stdout", io.StringIO()) as mock_stdout:
+                    main()
+
+                    output = mock_stdout.getvalue()
+                    assert "<span" in output
+                    assert "color:#c00" in output
+                    assert "ERROR" in output
+                    assert "<br>" in output
+                    assert "\x1b" not in output
+
     def test_main_list_colors(self):
         """Test main with list colors option."""
         with patch("sys.argv", ["pipetint", "--list-colors"]):
