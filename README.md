@@ -41,6 +41,8 @@ from pipetint import colored, RED, BLUE, BOLD
 print(colored("Error") | RED | BOLD)
 ```
 
+![Basic Colors](docs/images/basic-colors.png)
+
 ---
 
 ## 🎨 What Makes PipeTint Unique
@@ -54,6 +56,8 @@ Automatic priority-based rendering without manual z-index configuration:
 echo "hello world" | pipetint '(h.(ll))' red,blue
 # "he" is red, "ll" is blue (inner group has higher priority)
 ```
+
+![Nested Groups](docs/images/nested-groups.png)
 
 **Priority Rules:**
 1. **Pipeline stage** - Later commands override earlier ones
@@ -73,6 +77,8 @@ echo "hello world" | pipetint 'hello' red | pipetint 'llo w' green
 # "he" is red, "llo w" is green (overrides)
 ```
 
+![Pipeline Demo](docs/images/pipeline-demo.png)
+
 ### 3. 🎯 **Channel Isolation**
 
 Foreground, background, and attributes work independently:
@@ -83,6 +89,8 @@ echo "hello world" | pipetint '(h.(ll))' bg_red,blue
 # "he" = red background only
 # "ll" = red background AND blue foreground (both channels!)
 ```
+
+![Channel Isolation](docs/images/channel-isolation.png)
 
 ### 4. 🔍 **ANSI-Aware Pattern Matching**
 
@@ -135,6 +143,8 @@ result = (ColorizedString(code)
 print(result)
 ```
 
+![Complex Styling](docs/images/complex-styling.png)
+
 ---
 
 ## 🚀 Installation
@@ -184,6 +194,8 @@ echo "hello world" | pipetint 'l' red
 echo "hello world" | pipetint '(h.*o).*(w.*d)' red blue
 ```
 
+![CLI Examples](docs/images/cli-examples.png)
+
 #### Advanced: Nested Colors
 
 ```bash
@@ -199,6 +211,8 @@ echo "hello world" | pipetint '(h.(ll))' bg_red,blue
 echo "hello" | pipetint 'hello' bg_red    # Official format
 echo "hello" | pipetint 'hello' red_bg    # Natural format (auto-normalized)
 ```
+
+![Both Formats](docs/images/both-formats.png)
 
 #### CLI Options
 
@@ -259,6 +273,8 @@ code = "def hello_world():"
 result = ColorizedString(code).highlight(r"\b(def)\b", ["blue"])
 print(result)
 ```
+
+![Pattern Highlighting](docs/images/pattern-highlighting.png)
 
 ### Available Colors and Styles
 
@@ -471,7 +487,3 @@ This project uses automated versioning via git tags:
 - Versions are managed by `setuptools-scm` based on git tags
 - `poetry-dynamic-versioning` integrates this with Poetry builds
 - To release: `git tag v1.2.3 && git push --tags`
-
----
-
-**Made with ❤️ by the PipeTint community**
