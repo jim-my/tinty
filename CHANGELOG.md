@@ -5,6 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2025-01-23
+
+### Added
+
+- **Enhanced CLI Help with Colored Examples** (#10)
+  - TTY-aware colored help examples (shows colors in terminals, plain text when piped)
+  - Redesigned `--list-colors` with visual formatting and grouped sections
+  - Helper functions for displaying foreground colors, background colors, and text styles
+  - Special handling for hidden style to show readable description
+  - Complete style alias grouping (bold, inverse, reverse, swap, strike)
+  - 8 new screenshots integrated into README documentation
+
+- **Color Removal and HTML Output Formats** (#11)
+  - `--remove-color` / `--strip-color` flags to strip ANSI codes from input
+  - `--output-format` option supporting three formats:
+    - `ansi`: Default terminal output with ANSI color codes
+    - `plain`: Plain text with all colors removed
+    - `html`: HTML output with inline CSS styles
+  - `ansi_to_html()` function for converting ANSI codes to HTML
+    - Proper handling of compound ANSI codes (e.g., `\x1b[1;31m`)
+    - XSS prevention with HTML escaping
+    - Newline-to-`<br>` conversion for web rendering
+  - New example scripts: `color_removal.py` and `color_removal_cli.sh`
+
+### Documentation
+
+- Added color removal section to README with CLI and Python API examples
+- Added 8 terminal screenshots throughout README sections
+- New example scripts demonstrating color removal functionality
+- Updated help text with real-world usage examples
+
+### Tests
+
+- Added 3 comprehensive integration tests for color removal and HTML output
+- All 177 tests passing (174 from v2.0.2 + 3 new)
+
+### Refactoring
+
+- Extracted `_print_result()` helper function to reduce code complexity
+- Extracted color display functions for better organization
+- Reduced cyclomatic complexity in `main()` function
+
+---
+
 ## [2.0.2] - 2025-01-22
 
 ### Refactoring
@@ -208,6 +252,7 @@ With v1.0.0, we commit to:
 
 ---
 
+[2.1.0]: https://github.com/jim-my/pipetint/compare/v2.0.2...v2.1.0
 [2.0.2]: https://github.com/jim-my/pipetint/compare/v2.0.1...v2.0.2
 [2.0.1]: https://github.com/jim-my/pipetint/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/jim-my/pipetint/compare/v1.0.0...v2.0.0
